@@ -31,24 +31,26 @@ Docera is engineered to protect user confidentiality and prevent accidental disc
    - HTML inputs are parsed with `xml.etree.ElementTree` / `BeautifulSoup` and sanitized.
    - `<script>`, `<iframe>`, `<object>`, `<embed>`, `<link>`, and event handlers (`onload`, `onerror`) are completely stripped.
    - External network fetches (e.g., `http://`, `https://`, `file://`) are strictly blocked during rendering.
-4. **Verified Irreversible Redaction:**
+4. **Verified Irreversible Redaction & Structural Tree Purging:**
    - Standard PDF redaction software often creates black rectangles that merely obscure visible text while leaving underlying text stream characters intact and extractable.
    - Docera performs **destructive rasterized redaction**:
-     1. Clears text tokens from the affected page region.
+     1. Clears text tokens from the affected page region in the content stream.
      2. Renders the page bitmap at 200 DPI, burns opaque redaction boxes into the image buffer, and replaces the page stream.
-     3. Executes a post-redaction scan with `pdfplumber` confirming that exactly **0 characters** exist inside the redacted bounding coordinates.
+     3. **Purges `/StructTreeRoot`**: Completely removes the accessibility logical structure tree so that screen readers, tagged PDF tools, or deep parsers cannot read underlying tagged strings.
+     4. Calls `base_pdf.remove_unreferenced_resources()` to remove orphaned glyph tables and image objects.
+     5. Executes an automated post-redaction scan with `pdfplumber` confirming that exactly **0 characters** exist inside the redacted bounding coordinates.
 
 ---
 
-## 3. Cryptographic Standards
+## 3. Cryptographic Standards & Tamper Detection
 
 1. **AES-256 Encryption:**
    - PDFs are encrypted using standard PDF 2.0 / Adobe Extension Level 3 AES-256 (`R=6`, `V=5`).
    - Granular permissions flags for printing, copying, modifying, and annotating are enforced at the encryption dictionary level.
-2. **Digital Signatures (PAdES):**
+2. **Digital Signatures (PAdES) & Tamper Detection:**
    - Cryptographic signatures comply with PAdES standards using `pyhanko` and `cryptography`.
    - Supports SHA-256 hashing and PKCS#12 (`.p12` / `.pfx`) or PEM key certificates.
-   - Provides cryptographic signature verification validating certificate validity and document hash integrity.
+   - Hardened `verify_pdf_signatures` catches stream corruption, header invalidation, and byte tampering gracefully (`PdfStreamError`), flagging tampered documents as `intact: false`, `valid: false`, and `coverage: BROKEN` without service crashes.
 
 ---
 

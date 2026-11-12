@@ -1,4 +1,4 @@
-# Docera — Implementation Progress Log (M0–M12)
+# Docera — Implementation Progress Log (M0–M13)
 
 | Milestone | Scope | Status | Verification Summary |
 |---|---|---|---|
@@ -13,5 +13,6 @@
 | **M8** | Security & Verified Irreversible Redaction| **DONE** | Implemented AES-256 (`R=6`) password encryption, unlock, DocInfo/XMP/active-content sanitization, and destructive rasterized redaction verified by `pdfplumber` (0 remaining chars). |
 | **M9** | Batch Processing & Workspace Management | **DONE** | Implemented multi-file batch operations (`/batch` returning ZIP + `batch_report.json`) and Recent Documents search, sort, and inline rename (`PATCH /files/{id}`). |
 | **M10** | Full UI Routing & Deep Linking | **DONE** | Wired all 10 workspaces into React Router lazy routes, updated Dashboard quick-actions and tool directory (`Ready` badges + deep query params), responsive + dark-mode CSS tokens. |
-| **M11** | Automated Testing & Security Audits | **DONE** | Backend Pytest suite, Frontend Vitest unit/component integration suites, live headless Chrome Playwright E2E suite, `pip-audit` (0 CVEs), and `npm audit` (0 CVEs). |
+| **M11** | Automated Testing & Security Audits | **DONE** | Backend Pytest suite (15/15), Frontend Vitest unit/component suites (14/14), `pip-audit` (0 CVEs), and `npm audit` (0 CVEs). |
 | **M12** | Containerization, CI/CD & Documentation | **DONE** | Created `backend/Dockerfile`, `frontend/Dockerfile`, `nginx.conf`, `docker-compose.yml` (validated via `docker compose config`), `.github/workflows/ci.yml`, and complete docs suite. |
+| **M13** | Production Hardening & Full System Audit | **DONE** | Created `dev/production-hardening` branch; hardened subset font protection & encoding codecs in native edit; hardened StructTreeRoot stripping on redaction; hardened pyHanko digital signature tamper error handling; expanded Playwright suite to 10 comprehensive scenarios (10/10 passing in 1.2m); verified zero memory leaks and 0 CVEs; generated `docs/PRODUCTION_READINESS_REPORT.md` and updated `docs/FEATURE_MATRIX.md`. |

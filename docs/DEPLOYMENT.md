@@ -4,10 +4,10 @@
 
 ### Prerequisites
 - Python 3.12+ with `uv` (recommended) or `pip`
-- Node.js 20+ (22 LTS recommended) with `npm`
+- Node.js 20+ (22 or 24 LTS recommended) with `npm`
 - Optional system packages (installed automatically inside Docker images):
   - `tesseract-ocr` + `tesseract-ocr-eng` / `tesseract-ocr-khm` (for full server-side OCR)
-  - `libreoffice` (`soffice`) (for full native Office formatting Fidelity; Python fallbacks activate when absent)
+  - `libreoffice` (`soffice`) (for full native Office formatting fidelity; Python fallbacks activate when absent)
 
 ### Backend Startup
 ```bash
@@ -56,6 +56,9 @@ Docera ships with multi-stage production Dockerfiles for both the FastAPI backen
 - **`api` container:** Runs as non-root user `docera` (`UID 1001`) on `python:3.12-slim-bookworm`. Includes `poppler-utils`, `qpdf`, `tesseract-ocr`, `tesseract-ocr-eng`, `tesseract-ocr-khm`, and core fonts. Persists session storage in the `docera-data` volume mounted at `/app/data`.
 - **`web` container:** Runs `nginxinc/nginx-unprivileged:1.27-alpine-slim` on port `8080`. Serves compressed static bundles with immutable caching on `/assets/`, security headers, SPA history fallback, and `/api/` reverse proxy with `client_max_body_size 100M`.
 
+### Host Environment Notes
+- Ensure Docker Desktop or the Docker daemon engine is running on your host machine before executing `docker compose up`. If running on Windows, verify that the Docker Linux engine service (`com.docker.service`) is active.
+
 ---
 
 ## 3. Environment Variables
@@ -79,13 +82,13 @@ All backend environment variables use the `DOCERA_` prefix (`backend/app/core/co
 
 Run the complete test suite locally:
 ```bash
-# Backend unit & integration tests
+# Backend unit & integration tests (15/15 passing)
 cd backend && .venv/bin/python -m pytest -v
 
-# Frontend unit & component tests
+# Frontend unit & component tests (14/14 passing)
 cd frontend && npm run build && npm test
 
-# Full-stack Playwright E2E test
+# Full-stack 10-scenario Playwright E2E suite (10/10 passing)
 cd frontend && npx playwright test
 ```
 

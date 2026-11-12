@@ -240,10 +240,16 @@ def redact_pdf(
     finally:
         pdfium_doc.close()
 
+    struct_tree_cleared = False
     with pikepdf.open(io.BytesIO(pdf_bytes)) as base_pdf:
         for p_num, rep_bytes in replacement_pages.items():
             with pikepdf.open(io.BytesIO(rep_bytes)) as rep_pdf:
                 base_pdf.pages[p_num - 1] = rep_pdf.pages[0]
+        # Prevent redacted text leaks via structure tags or unreferenced page streams/layers
+        if "/StructTreeRoot" in base_pdf.Root:
+            del base_pdf.Root["/StructTreeRoot"]
+            struct_tree_cleared = True
+        base_pdf.remove_unreferenced_resources()
         out_buf = io.BytesIO()
         base_pdf.save(out_buf)
         redacted_bytes = out_buf.getvalue()
@@ -270,4 +276,5 @@ def redact_pdf(
         "removed_snippets_count": len(removed_snippets),
         "verified_removed": remaining_chars == 0,
         "remaining_chars_in_boxes": remaining_chars,
+        "struct_tree_cleared": struct_tree_cleared,
     }

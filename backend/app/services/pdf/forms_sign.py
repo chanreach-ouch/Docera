@@ -396,20 +396,35 @@ def sign_pdf_cryptographic(
 
 def verify_pdf_signatures(pdf_bytes: bytes) -> dict:
     """Inspect and validate embedded cryptographic digital signatures via pyHanko."""
-    reader = HankoPdfReader(io.BytesIO(pdf_bytes))
-    sigs = reader.embedded_signatures
+    try:
+        reader = HankoPdfReader(io.BytesIO(pdf_bytes))
+        sigs = reader.embedded_signatures
+    except Exception as exc:
+        raise AppError("invalid_pdf", "Could not parse PDF signature structures (the file may be corrupted or tampered).", 422) from exc
+
     results: list[dict] = []
     for sig in sigs:
-        signer_cert = sig.signer_cert
-        vc = ValidationContext(trust_roots=[signer_cert] if signer_cert else None, allow_fetching=False)
-        status = validate_pdf_signature(sig, vc)
-        results.append({
-            "field_name": sig.field_name,
-            "intact": bool(status.intact),
-            "valid": bool(status.valid),
-            "trusted": bool(status.trusted),
-            "coverage": str(status.coverage),
-            "signer": signer_cert.subject.human_friendly if signer_cert else "Unknown",
-            "self_signed": bool(signer_cert and signer_cert.issuer == signer_cert.subject),
-        })
+        try:
+            signer_cert = sig.signer_cert
+            vc = ValidationContext(trust_roots=[signer_cert] if signer_cert else None, allow_fetching=False)
+            status = validate_pdf_signature(sig, vc)
+            results.append({
+                "field_name": sig.field_name,
+                "intact": bool(status.intact),
+                "valid": bool(status.valid),
+                "trusted": bool(status.trusted),
+                "coverage": str(status.coverage),
+                "signer": signer_cert.subject.human_friendly if signer_cert else "Unknown",
+                "self_signed": bool(signer_cert and signer_cert.issuer == signer_cert.subject),
+            })
+        except Exception as exc:
+            results.append({
+                "field_name": getattr(sig, "field_name", "unknown"),
+                "intact": False,
+                "valid": False,
+                "trusted": False,
+                "coverage": "BROKEN",
+                "signer": f"Validation error: {type(exc).__name__}",
+                "self_signed": False,
+            })
     return {"signature_count": len(results), "signatures": results}

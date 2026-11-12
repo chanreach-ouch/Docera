@@ -415,7 +415,7 @@ export function OrganizeWorkspace({ initialMode = 'merge' }: { initialMode?: Org
         <section className="tool-panel" aria-label="Split and Extract PDF">
           <div className="tool-panel-actions">
             <button className="button primary" onClick={() => splitInput.current?.click()}><Upload size={16} /> Choose PDF</button>
-            <input ref={splitInput} type="file" accept="application/pdf,.pdf" className="visually-hidden" onChange={e => { void handleSplitFile(e.target.files); e.target.value = ''; }} />
+            <input ref={splitInput} type="file" accept="application/pdf,.pdf" aria-label="Choose PDF to split" className="visually-hidden" onChange={e => { void handleSplitFile(e.target.files); e.target.value = ''; }} />
             {splitSource && <span className="muted">{splitSource.name} · {splitSource.pageCount} pages</span>}
           </div>
 
