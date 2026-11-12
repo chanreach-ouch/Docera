@@ -1,0 +1,46 @@
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: docera-api
+    restart: unless-stopped
+    environment:
+      - DOCERA_DATA_DIR=/app/data
+      - DOCERA_MAX_UPLOAD_BYTES=26214400
+      - DOCERA_MAX_PAGES=500
+      - DOCERA_RETENTION_SECONDS=86400
+      - DOCERA_SESSION_QUOTA_BYTES=262144000
+      - DOCERA_MAX_SESSION_FILES=100
+      - DOCERA_ALLOWED_HOSTS=["localhost","127.0.0.1","testserver","api","web"]
+      - DOCERA_ALLOWED_ORIGINS=["http://localhost:8080","http://127.0.0.1:8080","http://localhost:5173","http://127.0.0.1:5173"]
+    volumes:
+      - docera-data:/app/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: docera-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  docera-data:
