@@ -6,6 +6,7 @@ import {
   createHistory,
   duplicateEditorObjects,
   redoHistory,
+  reorderZIndex,
   undoHistory,
   type EditorObject,
 } from './editorModel';
@@ -42,6 +43,13 @@ describe('editorModel and editorExport (M3/M4)', () => {
     const aligned = alignEditorObjects(hist.present, new Set(hist.present.map(o => o.id)), 'left');
     expect(aligned[0].x).toBe(40);
     expect(aligned[1].x).toBe(40);
+
+    // Test Z-order manipulation
+    const objB = hist.present[1];
+    const toBack = reorderZIndex(hist.present, new Set([objB.id]), 'sendToBack');
+    expect(toBack[0].id).toBe(objB.id);
+    const toFront = reorderZIndex(toBack, new Set([objA.id]), 'bringToFront');
+    expect(toFront[toFront.length - 1].id).toBe(objA.id);
 
     hist = undoHistory(hist);
     expect(hist.present).toHaveLength(1);

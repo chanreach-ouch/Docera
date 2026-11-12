@@ -220,4 +220,101 @@ test.describe('Docera Comprehensive E2E Test Suite', () => {
     await page.getByRole('link', { name: /back to your workspace/i }).click();
     await expect(page).toHaveURL('/');
   });
+
+  test('11: UI/UX & Interaction: theme switching, category filtering, and editor keyboard shortcuts', async ({ page }) => {
+    await page.goto('/');
+
+    // 1. Theme Toggle
+    const themeBtn = page.getByRole('button', { name: /switch to (dark|light) theme/i }).first();
+    await expect(themeBtn).toBeVisible();
+    await themeBtn.click();
+    const currentTheme = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+    expect(['light', 'dark']).toContain(currentTheme);
+
+    // 2. Category filtering
+    await page.getByRole('tab', { name: 'Organize PDF' }).click();
+    await expect(page.getByText('Merge PDF')).toBeVisible();
+    await expect(page.getByText('PDF to Word')).toHaveCount(0);
+    await page.getByRole('tab', { name: 'All Tools' }).click();
+    await expect(page.getByText('PDF to Word')).toBeVisible();
+
+    // 3. Editor shortcuts & object manipulation
+    const testPdf = await createTestPdf('Shortcut Test', 1);
+    const fileInput = page.locator('input[aria-label="Choose PDF files"]');
+    await fileInput.setInputFiles({ name: 'shortcut-test.pdf', mimeType: 'application/pdf', buffer: testPdf });
+    await expect(page.getByRole('link', { name: 'shortcut-test.pdf', exact: true })).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('link', { name: 'shortcut-test.pdf', exact: true }).click();
+    await page.getByRole('link', { name: /edit & annotate/i }).click();
+    await page.waitForURL(/\/documents\/.*\/edit/);
+
+    // Place a rectangle shape
+    await page.getByRole('button', { name: 'Rectangle', exact: true }).click();
+    const overlay = page.locator('.editor-overlay').first();
+    const box = await overlay.boundingBox();
+    await page.mouse.click(box!.x + 120, box!.y + 120);
+    await expect(page.locator('.editor-item.selected')).toBeVisible();
+
+    // Delete with keyboard Backspace
+    await page.keyboard.press('Backspace');
+    await expect(page.locator('.editor-item')).toHaveCount(0);
+
+    // Undo with Ctrl+Z
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('.editor-item')).toHaveCount(1);
+
+    // Export PDF
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Export PDF' }).click(),
+    ]);
+    const downloadedPath = await download.path();
+    expect(downloadedPath).toBeTruthy();
+    if (downloadedPath) {
+      const buffer = await readFile(downloadedPath);
+      expect(buffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    }
+  });
+
+  test('12: Responsive viewports & WCAG accessibility audit across mobile, tablet, and desktop', async ({ page }) => {
+    // 1. Mobile viewport (375x667 - iPhone SE)
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: /good work starts here/i })).toBeVisible();
+
+    const mobileBodyOverflow = await page.evaluate(() => {
+      return document.documentElement.scrollWidth <= window.innerWidth + 2;
+    });
+    expect(mobileBodyOverflow).toBe(true);
+
+    // Verify mobile category chip interaction
+    const mobileCategoryChip = page.getByRole('tab', { name: 'Protect & Redact' });
+    await expect(mobileCategoryChip).toBeVisible();
+    await mobileCategoryChip.click();
+    await expect(page.getByText('Protect PDF')).toBeVisible();
+
+    // 2. Tablet viewport (768x1024 - iPad)
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.goto('/tools/organize');
+    await expect(page.getByRole('heading', { name: /organize pdf/i })).toBeVisible();
+    const tabletOverflow = await page.evaluate(() => {
+      return document.documentElement.scrollWidth <= window.innerWidth + 2;
+    });
+    expect(tabletOverflow).toBe(true);
+
+    // 3. Desktop viewport (1440x900) & Skip-link accessibility
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+
+    // Focus skip-link via Tab navigation
+    await page.keyboard.press('Tab');
+    const skipLink = page.locator('.skip-link');
+    await expect(skipLink).toBeFocused();
+    await expect(skipLink).toHaveAttribute('href', '#main-content');
+
+    // ARIA landmark presence
+    await expect(page.locator('aside.sidebar nav[aria-label="Main navigation"]')).toBeVisible();
+    await expect(page.locator('main#main-content')).toBeVisible();
+    await expect(page.locator('div[role="tablist"][aria-label="Tool categories"]')).toBeVisible();
+  });
 });

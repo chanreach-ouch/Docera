@@ -71,8 +71,10 @@ export function OrganizeWorkspace({ initialMode = 'merge' }: { initialMode?: Org
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    setMode(initialMode);
-  }, [initialMode]);
+    if (!requested && initialMode) {
+      setMode(initialMode);
+    }
+  }, [initialMode, requested]);
 
   async function loadPdfBytes(file: File): Promise<LocalPdfFile> {
     const bytes = new Uint8Array(await file.arrayBuffer());

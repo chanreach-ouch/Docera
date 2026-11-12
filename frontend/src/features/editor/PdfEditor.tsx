@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlignCenter, AlignLeft, AlignRight, ArrowLeft, ArrowUpRight, Circle,
-  Copy, Download, Highlighter, Image as ImageIcon, Minus, MousePointer2, PenTool,
-  Plus, Redo2, Save, Search, Signature, Square, Stamp, StickyNote, Strikethrough,
-  Trash2, Type, Underline, Undo2, Wrench,
+  AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowUp, ArrowUpRight,
+  Circle, Copy, Download, Highlighter, Image as ImageIcon, Minus,
+  MousePointer2, Move, PenTool, Plus, Redo2, Save, Search,
+  Signature, Square, Stamp, StickyNote, Strikethrough, Trash2, Type,
+  Underline, Undo2, Wrench, X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -22,14 +23,26 @@ import {
   createHistory,
   duplicateEditorObjects,
   redoHistory,
+  reorderZIndex,
   undoHistory,
   type EditorObject,
   type EditorObjectKind,
   type FontFamilyOption,
+  type ObjectAlignAction,
 } from './editorModel';
 import { SignaturePadModal } from './SignaturePadModal';
 
 type ToolMode = 'select' | 'text' | 'rect' | 'circle' | 'line' | 'arrow' | 'ink' | 'highlight' | 'underline' | 'strikeout' | 'note' | 'stamp';
+type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw';
+
+const PRESET_COLORS = [
+  { label: 'Dark Slate', value: '#1c302e' },
+  { label: 'Pine Green', value: '#23665a' },
+  { label: 'Rust Red', value: '#b43c2d' },
+  { label: 'Warm Amber', value: '#d97706' },
+  { label: 'Sapphire', value: '#2563eb' },
+  { label: 'Pure White', value: '#ffffff' },
+];
 
 export default function PdfEditor() {
   const { id = '' } = useParams();
@@ -50,15 +63,16 @@ export default function PdfEditor() {
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Native PDF stream inspection (Part 6.3 existing content editing)
+  // Native PDF stream inspection
   const [nativeRuns, setNativeRuns] = useState<{ op_index: number; text: string; font: string | null; font_size: number; editable: boolean; reason: string | null }[]>([]);
   const [nativeImages, setNativeImages] = useState<{ op_index: number; name: string; width: number; height: number }[]>([]);
   const [nativeLoading, setNativeLoading] = useState(false);
   const [editingRun, setEditingRun] = useState<{ op_index: number; text: string } | null>(null);
 
-  // Drag / Ink state
+  // Drag / Ink state with 4-corner handle support
   const [dragState, setDragState] = useState<{
     kind: 'move' | 'resize' | 'draw-ink';
+    handle?: ResizeHandle;
     objId: string;
     startClientX: number;
     startClientY: number;
@@ -119,6 +133,68 @@ export default function PdfEditor() {
     pushObjects(objects.filter(o => !selectedIds.has(o.id)));
     setSelectedIds(new Set());
   }
+
+  // Keyboard shortcut listener
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const isField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if (isField) return;
+
+      if (e.key === 'Escape') {
+        setSelectedIds(new Set());
+        setTool('select');
+        return;
+      }
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.size > 0) {
+        e.preventDefault();
+        deleteSelected();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          setHistory(redoHistory);
+        } else {
+          setHistory(undoHistory);
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        setHistory(redoHistory);
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        if (selectedIds.size > 0) {
+          const d = duplicateEditorObjects(objects, selectedIds);
+          pushObjects(d.next);
+          setSelectedIds(new Set(d.newIds));
+        }
+        return;
+      }
+
+      if (selectedIds.size > 0 && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        e.preventDefault();
+        const delta = e.shiftKey ? 10 : 1;
+        let dx = 0;
+        let dy = 0;
+        if (e.key === 'ArrowLeft') dx = -delta;
+        if (e.key === 'ArrowRight') dx = delta;
+        if (e.key === 'ArrowUp') dy = -delta;
+        if (e.key === 'ArrowDown') dy = delta;
+        pushObjects(objects.map(o => selectedIds.has(o.id) ? { ...o, x: Math.max(0, o.x + dx), y: Math.max(0, o.y + dy) } : o));
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, objects]);
 
   function addObjectOnPage(pageIndex: number, ptX: number, ptY: number, kind: EditorObjectKind, extra: Partial<EditorObject> = {}) {
     const defaults: Record<EditorObjectKind, Partial<EditorObject>> = {
@@ -202,14 +278,62 @@ export default function PdfEditor() {
     }
     const dx = (e.clientX - dragState.startClientX) / scale;
     const dy = (e.clientY - dragState.startClientY) / scale;
-    setHistory(h => ({
-      ...h,
-      present: h.present.map(o => {
-        if (o.id !== dragState.objId || o.pageIndex !== pageIndex) return o;
-        if (dragState.kind === 'move') return { ...o, x: Math.max(0, dragState.origX + dx), y: Math.max(0, dragState.origY + dy) };
-        return { ...o, width: Math.max(16, dragState.origW + dx), height: Math.max(12, dragState.origH + dy) };
-      }),
-    }));
+
+    if (dragState.kind === 'move') {
+      setHistory(h => ({
+        ...h,
+        present: h.present.map(o => {
+          if (o.id !== dragState.objId || o.pageIndex !== pageIndex) return o;
+          return { ...o, x: Math.max(0, dragState.origX + dx), y: Math.max(0, dragState.origY + dy) };
+        }),
+      }));
+      return;
+    }
+
+    if (dragState.kind === 'resize') {
+      const handle = dragState.handle || 'se';
+      let nextX = dragState.origX;
+      let nextY = dragState.origY;
+      let nextW = dragState.origW;
+      let nextH = dragState.origH;
+
+      if (handle === 'se') {
+        nextW = Math.max(16, dragState.origW + dx);
+        nextH = Math.max(12, dragState.origH + dy);
+      } else if (handle === 'sw') {
+        const rawW = dragState.origW - dx;
+        if (rawW >= 16) {
+          nextX = dragState.origX + dx;
+          nextW = rawW;
+        }
+        nextH = Math.max(12, dragState.origH + dy);
+      } else if (handle === 'ne') {
+        nextW = Math.max(16, dragState.origW + dx);
+        const rawH = dragState.origH - dy;
+        if (rawH >= 12) {
+          nextY = dragState.origY + dy;
+          nextH = rawH;
+        }
+      } else if (handle === 'nw') {
+        const rawW = dragState.origW - dx;
+        if (rawW >= 16) {
+          nextX = dragState.origX + dx;
+          nextW = rawW;
+        }
+        const rawH = dragState.origH - dy;
+        if (rawH >= 12) {
+          nextY = dragState.origY + dy;
+          nextH = rawH;
+        }
+      }
+
+      setHistory(h => ({
+        ...h,
+        present: h.present.map(o => (o.id === dragState.objId && o.pageIndex === pageIndex
+          ? { ...o, x: nextX, y: nextY, width: nextW, height: nextH }
+          : o)),
+      }));
+    }
   }
 
   function handleImageUpload(file: File | undefined) {
@@ -236,7 +360,7 @@ export default function PdfEditor() {
         setStatusMsg(`Saved edited copy "${saved.filename}" (${fileSize(saved.size_bytes)}) to workspace.`);
       } else {
         triggerDownload(outBytes, outName);
-        setStatusMsg(`Exported "${outName}" (${fileSize(outBytes.byteLength)}) with ${objects.length} objects/annotations.`);
+        setStatusMsg(`Exported "${outName}" (${fileSize(outBytes.byteLength)}) with ${objects.length} objects.`);
       }
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Export failed.');
@@ -299,18 +423,33 @@ export default function PdfEditor() {
     }
   }
 
+  function handleAlign(action: ObjectAlignAction) {
+    pushObjects(alignEditorObjects(objects, selectedIds, action, dims.width, dims.height));
+  }
+
   return (
     <div className="viewer" onPointerUp={() => setDragState(null)}>
       <header className="viewer-header">
-        <Link to={data ? `/documents/${data.id}` : '/'} className="icon-button" title="Back to viewer" aria-label="Back to viewer"><ArrowLeft size={20} /></Link>
-        <div className="viewer-title">
-          <strong>{data ? `Edit · ${data.filename}` : 'PDF Editor'}</strong>
-          <span>{data ? `${data.page_count} pages · ${objects.length} placed objects` : 'Loading…'}</span>
+        <div className="viewer-header-left">
+          <Link to={data ? `/documents/${data.id}` : '/'} className="icon-button" title="Back to viewer" aria-label="Back to viewer">
+            <ArrowLeft size={18} />
+          </Link>
+          <div className="viewer-title">
+            <strong>{data ? data.filename : 'PDF Editor'}</strong>
+            <span className="viewer-title-sub">
+              {data ? `${data.page_count} ${data.page_count === 1 ? 'page' : 'pages'} · ${objects.length} placed objects` : 'Loading…'}
+            </span>
+          </div>
         </div>
+
         {data && (
           <div className="document-actions">
-            <button className="button secondary small" disabled={busy || !sourceBytes} onClick={() => void runExport(true)}><Save size={15} /> Save copy</button>
-            <button className="button primary small" disabled={busy || !sourceBytes} onClick={() => void runExport(false)}><Download size={15} /> Export PDF</button>
+            <button className="button secondary small" disabled={busy || !sourceBytes} onClick={() => void runExport(true)}>
+              <Save size={15} /> Save copy
+            </button>
+            <button className="button primary small" disabled={busy || !sourceBytes} onClick={() => void runExport(false)}>
+              <Download size={15} /> Export PDF
+            </button>
           </div>
         )}
       </header>
@@ -321,52 +460,214 @@ export default function PdfEditor() {
       {data && pdf && (
         <>
           <div className="viewer-toolbar" role="toolbar" aria-label="Editor tools">
-            <button className="icon-button" title="Undo" aria-label="Undo" disabled={!history.past.length} onClick={() => setHistory(undoHistory)}><Undo2 size={17} /></button>
-            <button className="icon-button" title="Redo" aria-label="Redo" disabled={!history.future.length} onClick={() => setHistory(redoHistory)}><Redo2 size={17} /></button>
-            <div className="toolbar-divider" />
-
-            <button className={`icon-button ${tool === 'select' ? 'tool-active' : ''}`} title="Select & move" aria-label="Select" onClick={() => setTool('select')}><MousePointer2 size={17} /></button>
-            <button className={`icon-button ${tool === 'text' ? 'tool-active' : ''}`} title="Insert text" aria-label="Insert text" onClick={() => setTool('text')}><Type size={17} /></button>
-            <button className="icon-button" title="Insert image" aria-label="Insert image" onClick={() => imageInputRef.current?.click()}><ImageIcon size={17} /></button>
-            <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" className="visually-hidden" onChange={e => { handleImageUpload(e.target.files?.[0]); e.target.value = ''; }} />
-
-            <button className={`icon-button ${tool === 'rect' ? 'tool-active' : ''}`} title="Rectangle" aria-label="Rectangle" onClick={() => setTool('rect')}><Square size={17} /></button>
-            <button className={`icon-button ${tool === 'circle' ? 'tool-active' : ''}`} title="Ellipse" aria-label="Ellipse" onClick={() => setTool('circle')}><Circle size={17} /></button>
-            <button className={`icon-button ${tool === 'line' ? 'tool-active' : ''}`} title="Line" aria-label="Line" onClick={() => setTool('line')}><Minus size={17} /></button>
-            <button className={`icon-button ${tool === 'arrow' ? 'tool-active' : ''}`} title="Arrow" aria-label="Arrow" onClick={() => setTool('arrow')}><ArrowUpRight size={17} /></button>
-            <button className={`icon-button ${tool === 'ink' ? 'tool-active' : ''}`} title="Freehand ink" aria-label="Freehand draw" onClick={() => setTool('ink')}><PenTool size={17} /></button>
-            <div className="toolbar-divider" />
-
-            <button className={`icon-button ${tool === 'highlight' ? 'tool-active' : ''}`} title="Highlight annotation" aria-label="Highlight" onClick={() => setTool('highlight')}><Highlighter size={17} /></button>
-            <button className={`icon-button ${tool === 'underline' ? 'tool-active' : ''}`} title="Underline annotation" aria-label="Underline" onClick={() => setTool('underline')}><Underline size={17} /></button>
-            <button className={`icon-button ${tool === 'strikeout' ? 'tool-active' : ''}`} title="Strikeout annotation" aria-label="Strikeout" onClick={() => setTool('strikeout')}><Strikethrough size={17} /></button>
-            <button className={`icon-button ${tool === 'note' ? 'tool-active' : ''}`} title="Sticky note comment" aria-label="Sticky note" onClick={() => setTool('note')}><StickyNote size={17} /></button>
-            <button className={`icon-button ${tool === 'stamp' ? 'tool-active' : ''}`} title="Stamp annotation" aria-label="Stamp" onClick={() => setTool('stamp')}><Stamp size={17} /></button>
-            <button className="icon-button" title="Visual signature" aria-label="Visual signature" onClick={() => setShowSigModal(true)}><Signature size={17} /></button>
+            <div className="toolbar-segment">
+              <button className="icon-button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled={!history.past.length} onClick={() => setHistory(undoHistory)}>
+                <Undo2 size={16} />
+              </button>
+              <button className="icon-button" title="Redo (Ctrl+Y)" aria-label="Redo" disabled={!history.future.length} onClick={() => setHistory(redoHistory)}>
+                <Redo2 size={16} />
+              </button>
+            </div>
 
             <div className="toolbar-divider" />
-            <button className="icon-button" aria-label="Zoom out" onClick={() => setZoom(Math.max(0.25, scale - 0.15))}><Minus size={16} /></button>
-            <span className="zoom-value">{Math.round(scale * 100)}%</span>
-            <button className="icon-button" aria-label="Zoom in" onClick={() => setZoom(Math.min(2.5, scale + 0.15))}><Plus size={16} /></button>
 
-            {tool !== 'select' && <span className="view-only-note">Click page to place {tool}</span>}
+            <div className="toolbar-segment">
+              <button
+                className={`icon-button ${tool === 'select' ? 'tool-active' : ''}`}
+                title="Select & transform (V / Esc)"
+                aria-label="Select"
+                onClick={() => setTool('select')}
+              >
+                <MousePointer2 size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'text' ? 'tool-active' : ''}`}
+                title="Insert text box (T)"
+                aria-label="Insert text"
+                onClick={() => setTool('text')}
+              >
+                <Type size={16} />
+              </button>
+              <button
+                className="icon-button"
+                title="Insert image"
+                aria-label="Insert image"
+                onClick={() => imageInputRef.current?.click()}
+              >
+                <ImageIcon size={16} />
+              </button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                className="visually-hidden"
+                onChange={e => { handleImageUpload(e.target.files?.[0]); e.target.value = ''; }}
+              />
+
+              <button
+                className={`icon-button ${tool === 'rect' ? 'tool-active' : ''}`}
+                title="Rectangle shape"
+                aria-label="Rectangle"
+                onClick={() => setTool('rect')}
+              >
+                <Square size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'circle' ? 'tool-active' : ''}`}
+                title="Ellipse shape"
+                aria-label="Ellipse"
+                onClick={() => setTool('circle')}
+              >
+                <Circle size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'line' ? 'tool-active' : ''}`}
+                title="Line shape"
+                aria-label="Line"
+                onClick={() => setTool('line')}
+              >
+                <Minus size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'arrow' ? 'tool-active' : ''}`}
+                title="Arrow pointer"
+                aria-label="Arrow"
+                onClick={() => setTool('arrow')}
+              >
+                <ArrowUpRight size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'ink' ? 'tool-active' : ''}`}
+                title="Freehand drawing pen"
+                aria-label="Freehand draw"
+                onClick={() => setTool('ink')}
+              >
+                <PenTool size={16} />
+              </button>
+            </div>
+
+            <div className="toolbar-divider" />
+
+            <div className="toolbar-segment">
+              <button
+                className={`icon-button ${tool === 'highlight' ? 'tool-active' : ''}`}
+                title="Highlight annotation (/Annots)"
+                aria-label="Highlight"
+                onClick={() => setTool('highlight')}
+              >
+                <Highlighter size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'underline' ? 'tool-active' : ''}`}
+                title="Underline annotation"
+                aria-label="Underline"
+                onClick={() => setTool('underline')}
+              >
+                <Underline size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'strikeout' ? 'tool-active' : ''}`}
+                title="Strikeout annotation"
+                aria-label="Strikeout"
+                onClick={() => setTool('strikeout')}
+              >
+                <Strikethrough size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'note' ? 'tool-active' : ''}`}
+                title="Sticky note comment"
+                aria-label="Sticky note"
+                onClick={() => setTool('note')}
+              >
+                <StickyNote size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'stamp' ? 'tool-active' : ''}`}
+                title="Stamp approval annotation"
+                aria-label="Stamp"
+                onClick={() => setTool('stamp')}
+              >
+                <Stamp size={16} />
+              </button>
+              <button
+                className="icon-button"
+                title="Draw, type, or upload visual signature"
+                aria-label="Visual signature"
+                onClick={() => setShowSigModal(true)}
+              >
+                <Signature size={16} />
+              </button>
+            </div>
+
+            <div className="toolbar-divider" />
+
+            <div className="toolbar-segment zoom-controls">
+              <button className="icon-button" aria-label="Zoom out" onClick={() => setZoom(Math.max(0.25, scale - 0.15))}>
+                <Minus size={15} />
+              </button>
+              <select
+                className="zoom-select"
+                aria-label="Select zoom level"
+                value={typeof zoom === 'number' ? `${Math.round(zoom * 100)}%` : zoom}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === 'width' || val === 'page') setZoom(val);
+                  else setZoom(parseFloat(val) / 100);
+                }}
+              >
+                <option value="width">Fit Width</option>
+                <option value="page">Fit Page</option>
+                <option value="50%">50%</option>
+                <option value="75%">75%</option>
+                <option value="100%">100%</option>
+                <option value="125%">125%</option>
+                <option value="150%">150%</option>
+                <option value="200%">200%</option>
+              </select>
+              <button className="icon-button" aria-label="Zoom in" onClick={() => setZoom(Math.min(2.5, scale + 0.15))}>
+                <Plus size={15} />
+              </button>
+            </div>
+
+            {tool !== 'select' && (
+              <span className="tool-hint-badge">
+                Click canvas to place {tool}
+              </span>
+            )}
           </div>
 
           {(errorMsg || statusMsg) && (
-            <div style={{ padding: '6px 16px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
-              {errorMsg && <div className="error-notice" role="alert"><p>{errorMsg}</p></div>}
-              {statusMsg && <div className="upload-result done" role="status"><p style={{ margin: 0 }}>{statusMsg}</p></div>}
+            <div className="editor-status-bar">
+              {errorMsg && (
+                <div className="error-notice" role="alert">
+                  <p>{errorMsg}</p>
+                  <button type="button" className="icon-button small" onClick={() => setErrorMsg(null)} aria-label="Dismiss error">
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+              {statusMsg && (
+                <div className="upload-result done" role="status">
+                  <p style={{ margin: 0 }}>{statusMsg}</p>
+                  <button type="button" className="icon-button small" onClick={() => setStatusMsg(null)} aria-label="Dismiss message">
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
           <div className="editor-body">
-            {/* Left panel: Thumbnails */}
-            <aside className="page-panel is-open" aria-label="Pages">
-              <h3 className="pages-label">Pages <span>{data.page_count}</span></h3>
+            {/* Left Rail: Thumbnails */}
+            <aside className="page-panel is-open" aria-label="Page thumbnails rail">
+              <div className="panel-header">
+                <h3 className="pages-label">Pages <span>{data.page_count}</span></h3>
+              </div>
               <ol className="thumbnail-list">
                 {data.pages.map(info => (
                   <li key={info.index}>
                     <button
+                      type="button"
                       className={`thumbnail-button ${page === info.index + 1 ? 'selected' : ''}`}
                       onClick={() => {
                         setPage(info.index + 1);
@@ -374,20 +675,20 @@ export default function PdfEditor() {
                       }}
                     >
                       <PageCanvas pdf={pdf} info={info} scale={110 / Math.max(info.width, info.height)} rotation={0} thumbnail />
-                      <span>{info.index + 1}</span>
+                      <span className="thumbnail-page-number">{info.index + 1}</span>
                     </button>
                   </li>
                 ))}
               </ol>
             </aside>
 
-            {/* Center panel: Pages + Interactive Overlays */}
-            <div ref={scrollRef} className="document-scroll" aria-label="Editor canvas">
+            {/* Center Canvas: Pages Stack */}
+            <div ref={scrollRef} className="document-scroll" aria-label="Editor canvas viewport">
               <div className="pages-stack">
                 {data.pages.map(info => {
                   const pageObjs = objects.filter(o => o.pageIndex === info.index);
                   return (
-                    <div key={info.index} className="editor-page-wrapper" style={{ position: 'relative' }}>
+                    <div key={info.index} className="editor-page-wrapper" data-page={info.index + 1} style={{ position: 'relative' }}>
                       <PageCanvas pdf={pdf} info={info} scale={scale} rotation={0} onActive={idx => setPage(idx + 1)} />
                       <div
                         className={`editor-overlay ${tool !== 'select' ? 'placing' : ''}`}
@@ -463,31 +764,89 @@ export default function PdfEditor() {
                               {obj.kind === 'strikeout' && <div style={{ width: '100%', height: '50%', borderBottom: `2px solid ${obj.color}` }} />}
                               {obj.kind === 'note' && <div title={obj.text} style={{ width: '100%', height: '100%', background: obj.color, border: '1px solid #1c302e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>✎</div>}
                               {obj.kind === 'stamp' && <div style={{ width: '100%', height: '100%', border: `2px solid ${obj.color}`, color: obj.color, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 * scale }}>{obj.stampLabel || 'APPROVED'}</div>}
-                              {obj.kind === 'ink' && obj.points && obj.points.length > 1 && (
-                                <svg style={{ position: 'fixed', left: 0, top: 0, width: 0, height: 0, overflow: 'visible', pointerEvents: 'none' }} />
-                              )}
+
+                              {/* 4-corner interactive resize handles */}
                               {isSel && obj.kind !== 'ink' && (
-                                <div
-                                  className="resize-handle"
-                                  onPointerDown={e => {
-                                    e.stopPropagation();
-                                    setDragState({
-                                      kind: 'resize',
-                                      objId: obj.id,
-                                      startClientX: e.clientX,
-                                      startClientY: e.clientY,
-                                      origX: obj.x,
-                                      origY: obj.y,
-                                      origW: obj.width,
-                                      origH: obj.height,
-                                    });
-                                  }}
-                                />
+                                <>
+                                  <div
+                                    className="resize-handle handle-se"
+                                    title="Resize"
+                                    onPointerDown={e => {
+                                      e.stopPropagation();
+                                      setDragState({
+                                        kind: 'resize',
+                                        handle: 'se',
+                                        objId: obj.id,
+                                        startClientX: e.clientX,
+                                        startClientY: e.clientY,
+                                        origX: obj.x,
+                                        origY: obj.y,
+                                        origW: obj.width,
+                                        origH: obj.height,
+                                      });
+                                    }}
+                                  />
+                                  <div
+                                    className="resize-handle handle-sw"
+                                    title="Resize"
+                                    onPointerDown={e => {
+                                      e.stopPropagation();
+                                      setDragState({
+                                        kind: 'resize',
+                                        handle: 'sw',
+                                        objId: obj.id,
+                                        startClientX: e.clientX,
+                                        startClientY: e.clientY,
+                                        origX: obj.x,
+                                        origY: obj.y,
+                                        origW: obj.width,
+                                        origH: obj.height,
+                                      });
+                                    }}
+                                  />
+                                  <div
+                                    className="resize-handle handle-ne"
+                                    title="Resize"
+                                    onPointerDown={e => {
+                                      e.stopPropagation();
+                                      setDragState({
+                                        kind: 'resize',
+                                        handle: 'ne',
+                                        objId: obj.id,
+                                        startClientX: e.clientX,
+                                        startClientY: e.clientY,
+                                        origX: obj.x,
+                                        origY: obj.y,
+                                        origW: obj.width,
+                                        origH: obj.height,
+                                      });
+                                    }}
+                                  />
+                                  <div
+                                    className="resize-handle handle-nw"
+                                    title="Resize"
+                                    onPointerDown={e => {
+                                      e.stopPropagation();
+                                      setDragState({
+                                        kind: 'resize',
+                                        handle: 'nw',
+                                        objId: obj.id,
+                                        startClientX: e.clientX,
+                                        startClientY: e.clientY,
+                                        origX: obj.x,
+                                        origY: obj.y,
+                                        origW: obj.width,
+                                        origH: obj.height,
+                                      });
+                                    }}
+                                  />
+                                </>
                               )}
                             </div>
                           );
                         })}
-                        {/* Render ink strokes across the page */}
+
+                        {/* Freehand Ink strokes */}
                         <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
                           {pageObjs.filter(o => o.kind === 'ink' && o.points?.length).map(o => (
                             <polyline
@@ -508,23 +867,74 @@ export default function PdfEditor() {
               </div>
             </div>
 
-            {/* Right panel: Properties & Native Stream Inspector */}
+            {/* Right Rail: Properties & Native Stream Inspector */}
             <aside className="properties-panel" aria-label="Properties inspector">
-              <h3>Properties</h3>
-              {!selectedObjects.length && <p className="muted" style={{ fontSize: 13 }}>Select an object on the page to edit its formatting, alignment, or annotation properties.</p>}
+              <div className="panel-header">
+                <h3>Properties</h3>
+                {selectedObjects.length > 0 && (
+                  <span className="badge available">{selectedObjects.length} selected</span>
+                )}
+              </div>
+
+              {!selectedObjects.length && (
+                <div className="inspector-empty-state">
+                  <Move size={24} strokeWidth={1.5} className="muted" />
+                  <p>Select any text, shape, image, or annotation on the canvas to inspect and edit its properties.</p>
+                </div>
+              )}
 
               {selectedObjects.length > 0 && (
                 <div className="prop-group">
                   <div className="tool-panel-actions">
-                    <button className="button quiet small" onClick={() => { const d = duplicateEditorObjects(objects, selectedIds); pushObjects(d.next); setSelectedIds(new Set(d.newIds)); }}><Copy size={14} /> Duplicate</button>
-                    <button className="button danger small" onClick={deleteSelected}><Trash2 size={14} /> Delete</button>
+                    <button
+                      type="button"
+                      className="button quiet small"
+                      onClick={() => { const d = duplicateEditorObjects(objects, selectedIds); pushObjects(d.next); setSelectedIds(new Set(d.newIds)); }}
+                      title="Duplicate (Ctrl+D)"
+                    >
+                      <Copy size={13} /> Duplicate
+                    </button>
+                    <button
+                      type="button"
+                      className="button danger small"
+                      onClick={deleteSelected}
+                      title="Delete (Backspace / Del)"
+                    >
+                      <Trash2 size={13} /> Delete
+                    </button>
                   </div>
+
                   <div className="prop-row">
-                    <span>Align</span>
+                    <span className="prop-label">Align</span>
                     <div className="document-actions">
-                      <button className="icon-button" title="Align left" onClick={() => pushObjects(alignEditorObjects(objects, selectedIds, 'left', dims.width, dims.height))}><AlignLeft size={14} /></button>
-                      <button className="icon-button" title="Align center" onClick={() => pushObjects(alignEditorObjects(objects, selectedIds, 'center', dims.width, dims.height))}><AlignCenter size={14} /></button>
-                      <button className="icon-button" title="Align right" onClick={() => pushObjects(alignEditorObjects(objects, selectedIds, 'right', dims.width, dims.height))}><AlignRight size={14} /></button>
+                      <button type="button" className="icon-button" title="Align left" onClick={() => handleAlign('left')}><AlignLeft size={14} /></button>
+                      <button type="button" className="icon-button" title="Align center" onClick={() => handleAlign('center')}><AlignCenter size={14} /></button>
+                      <button type="button" className="icon-button" title="Align right" onClick={() => handleAlign('right')}><AlignRight size={14} /></button>
+                      <button type="button" className="icon-button" title="Align top" onClick={() => handleAlign('top')}><ArrowUp size={14} /></button>
+                      <button type="button" className="icon-button" title="Align middle" onClick={() => handleAlign('middle')}><Minus size={14} /></button>
+                      <button type="button" className="icon-button" title="Align bottom" onClick={() => handleAlign('bottom')}><ArrowDown size={14} /></button>
+                    </div>
+                  </div>
+
+                  <div className="prop-row">
+                    <span className="prop-label">Arrange</span>
+                    <div className="document-actions">
+                      <button
+                        type="button"
+                        className="button quiet small"
+                        title="Bring layer forward"
+                        onClick={() => pushObjects(reorderZIndex(objects, selectedIds, 'bringForward'))}
+                      >
+                        Forward
+                      </button>
+                      <button
+                        type="button"
+                        className="button quiet small"
+                        title="Send layer backward"
+                        onClick={() => pushObjects(reorderZIndex(objects, selectedIds, 'sendBackward'))}
+                      >
+                        Backward
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -555,42 +965,65 @@ export default function PdfEditor() {
                   {primarySelected.kind === 'text' && (
                     <>
                       <label className="prop-field">
-                        <span>Font</span>
+                        <span>Font family</span>
                         <select value={primarySelected.fontFamily || 'Helvetica'} onChange={e => updateSelected({ fontFamily: e.target.value as FontFamilyOption })}>
-                          <option value="Helvetica">Helvetica</option>
-                          <option value="TimesRoman">Times Roman</option>
-                          <option value="Courier">Courier</option>
+                          <option value="Helvetica">Helvetica (Sans-Serif)</option>
+                          <option value="TimesRoman">Times Roman (Serif)</option>
+                          <option value="Courier">Courier (Monospace)</option>
                         </select>
                       </label>
                       <label className="prop-field">
-                        <span>Font size (pt)</span>
-                        <input type="number" min={6} max={96} value={primarySelected.fontSize || 14} onChange={e => updateSelected({ fontSize: Number(e.target.value) })} />
+                        <span>Font size ({primarySelected.fontSize || 14} pt)</span>
+                        <input type="range" min={8} max={72} value={primarySelected.fontSize || 14} onChange={e => updateSelected({ fontSize: Number(e.target.value) })} />
                       </label>
-                      <label className="prop-field">
-                        <span>Line spacing</span>
-                        <input type="number" step={0.1} min={0.8} max={3} value={primarySelected.lineHeight || 1.25} onChange={e => updateSelected({ lineHeight: Number(e.target.value) })} />
-                      </label>
+                      <div className="prop-row">
+                        <span className="prop-label">Alignment</span>
+                        <div className="document-actions">
+                          <button type="button" className={`icon-button ${primarySelected.align === 'left' ? 'tool-active' : ''}`} onClick={() => updateSelected({ align: 'left' })} title="Left"><AlignLeft size={14} /></button>
+                          <button type="button" className={`icon-button ${primarySelected.align === 'center' ? 'tool-active' : ''}`} onClick={() => updateSelected({ align: 'center' })} title="Center"><AlignCenter size={14} /></button>
+                          <button type="button" className={`icon-button ${primarySelected.align === 'right' ? 'tool-active' : ''}`} onClick={() => updateSelected({ align: 'right' })} title="Right"><AlignRight size={14} /></button>
+                        </div>
+                      </div>
                     </>
                   )}
 
-                  <label className="prop-field">
-                    <span>Color</span>
-                    <input type="color" value={primarySelected.color} onChange={e => updateSelected({ color: e.target.value })} />
-                  </label>
+                  <div className="prop-field">
+                    <span>Preset colors</span>
+                    <div className="color-swatches-row">
+                      {PRESET_COLORS.map(sw => (
+                        <button
+                          key={sw.value}
+                          type="button"
+                          className={`swatch-circle ${primarySelected.color === sw.value ? 'active' : ''}`}
+                          style={{ backgroundColor: sw.value }}
+                          title={sw.label}
+                          onClick={() => updateSelected({ color: sw.value })}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        className="color-picker-input"
+                        value={primarySelected.color}
+                        onChange={e => updateSelected({ color: e.target.value })}
+                        title="Custom hex color"
+                      />
+                    </div>
+                  </div>
 
                   {(primarySelected.kind === 'rect' || primarySelected.kind === 'circle') && (
                     <>
                       <label className="prop-field">
-                        <span>Border width</span>
-                        <input type="number" min={0} max={20} value={primarySelected.strokeWidth ?? 2} onChange={e => updateSelected({ strokeWidth: Number(e.target.value) })} />
+                        <span>Border width ({primarySelected.strokeWidth ?? 2}px)</span>
+                        <input type="range" min={0} max={12} value={primarySelected.strokeWidth ?? 2} onChange={e => updateSelected({ strokeWidth: Number(e.target.value) })} />
                       </label>
                       <label className="prop-field">
-                        <span>Fill</span>
+                        <span>Fill color</span>
                         <select value={primarySelected.fillColor || 'transparent'} onChange={e => updateSelected({ fillColor: e.target.value })}>
-                          <option value="transparent">Transparent</option>
+                          <option value="transparent">Transparent (None)</option>
                           <option value="#e4efec">Soft pine</option>
                           <option value="#fef6e6">Warm amber</option>
-                          <option value="#ffffff">White</option>
+                          <option value="#ffffff">Pure white</option>
+                          <option value="#1c302e">Dark ink</option>
                         </select>
                       </label>
                     </>
@@ -607,13 +1040,13 @@ export default function PdfEditor() {
 
               <div className="prop-group">
                 <div className="panel-heading">
-                  <h4 style={{ margin: 0, fontSize: 13 }}><Wrench size={13} /> Existing PDF content (Page {page})</h4>
+                  <h4 style={{ margin: 0, fontSize: 13 }}><Wrench size={13} /> Native stream editor (Page {page})</h4>
                   <button className="button quiet small" disabled={nativeLoading || !sourceBytes} onClick={() => void inspectNativePage()}>
                     <Search size={13} /> Inspect
                   </button>
                 </div>
                 <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>
-                  Modifies supported single-byte text operators directly in the PDF stream without white-box masking. Subset/CID fonts are flagged as unsupported.
+                  Inspects and replaces text operators in the underlying PDF stream. Subset and CID fonts are protected from glyph corruption.
                 </p>
 
                 {nativeRuns.length > 0 && (

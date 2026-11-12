@@ -399,3 +399,44 @@ def test_batch_processing_with_partial_failure_reporting(client):
         assert "batch_report.json" in names
         rotated_bytes = zf.read("01_good-rotated.pdf")
         assert PdfReader(io.BytesIO(rotated_bytes)).pages[0].get("/Rotate") == 90
+
+
+def test_tampered_signature_detection_and_safeguards(client):
+    """Verify that cryptographically signed PDFs detect byte tampering cleanly."""
+    from app.services.pdf.forms_sign import sign_pdf_cryptographic, verify_pdf_signatures
+
+    base_pdf = _make_text_pdf(["Tamper Test Document"])
+    signed = sign_pdf_cryptographic(base_pdf, signer_name="Alice Auditor", reason="Tamper Audit Test")
+    signed_bytes = signed["bytes"]
+
+    # Initial verification: must be intact and valid
+    initial_ver = verify_pdf_signatures(signed_bytes)
+    assert initial_ver["signature_count"] == 1
+    assert initial_ver["signatures"][0]["intact"] is True
+
+    # Intentionally corrupt stream bytes
+    tampered_bytes = bytearray(signed_bytes)
+    # Corrupt a byte in the middle of the document content
+    mid = len(tampered_bytes) // 2
+    tampered_bytes[mid] = (tampered_bytes[mid] + 1) % 256
+    tampered_bytes = bytes(tampered_bytes)
+
+    # Verification must catch tampering safely (intact: False or error caught cleanly)
+    try:
+        tampered_ver = verify_pdf_signatures(tampered_bytes)
+        assert tampered_ver["signatures"][0]["intact"] is False
+    except Exception as exc:
+        # AppError 422 is also an acceptable rejection of corrupt stream
+        from app.core.errors import AppError
+        assert isinstance(exc, AppError)
+
+
+def test_subset_font_detection_safeguard():
+    """Verify that subset font prefixes (/ABCDEF+Name) are safely flagged as non-editable."""
+    from app.services.pdf.native_edit import SUBSET_PREFIX_RE
+
+    assert SUBSET_PREFIX_RE.match("/ABCDEF+Calibri") is not None
+    assert SUBSET_PREFIX_RE.match("/XYZABC+TimesNewRoman") is not None
+    assert SUBSET_PREFIX_RE.match("/Helvetica") is None
+    assert SUBSET_PREFIX_RE.match("/StandardFont") is None
+

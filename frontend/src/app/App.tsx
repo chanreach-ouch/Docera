@@ -7,6 +7,7 @@ import {
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { Brand } from '../components/Brand';
 import { ErrorNotice } from '../components/ErrorNotice';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { Dashboard } from '../features/dashboard/Dashboard';
 import { api } from '../services/api';
 import { fileSize } from '../services/format';
@@ -58,6 +59,9 @@ function Shell({ children }: { children: React.ReactNode }) {
         <NavLink to="/tools/batch"><FolderKanban size={18} aria-hidden="true" />Batch</NavLink>
       </nav>
       <div className="sidebar-bottom">
+        <div className="sidebar-theme-wrap">
+          <ThemeToggle />
+        </div>
         <div className="privacy-note">
           <ShieldCheck size={22} strokeWidth={1.5} aria-hidden="true" />
           <strong>Your documents.<br />Your workspace.</strong>

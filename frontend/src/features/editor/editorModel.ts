@@ -138,3 +138,45 @@ export function alignEditorObjects(
     }
   });
 }
+
+export type ZOrderAction = 'bringForward' | 'sendBackward' | 'bringToFront' | 'sendToBack';
+
+export function reorderZIndex(
+  objects: EditorObject[],
+  selectedIds: Set<string>,
+  action: ZOrderAction,
+): EditorObject[] {
+  if (!selectedIds.size || objects.length <= 1) return objects;
+  const result = [...objects];
+  if (action === 'bringToFront') {
+    const nonSelected = result.filter(o => !selectedIds.has(o.id));
+    const selected = result.filter(o => selectedIds.has(o.id));
+    return [...nonSelected, ...selected];
+  }
+  if (action === 'sendToBack') {
+    const nonSelected = result.filter(o => !selectedIds.has(o.id));
+    const selected = result.filter(o => selectedIds.has(o.id));
+    return [...selected, ...nonSelected];
+  }
+  if (action === 'bringForward') {
+    for (let i = result.length - 2; i >= 0; i--) {
+      if (selectedIds.has(result[i].id) && !selectedIds.has(result[i + 1].id)) {
+        const tmp = result[i];
+        result[i] = result[i + 1];
+        result[i + 1] = tmp;
+      }
+    }
+    return result;
+  }
+  if (action === 'sendBackward') {
+    for (let i = 1; i < result.length; i++) {
+      if (selectedIds.has(result[i].id) && !selectedIds.has(result[i - 1].id)) {
+        const tmp = result[i];
+        result[i] = result[i - 1];
+        result[i - 1] = tmp;
+      }
+    }
+    return result;
+  }
+  return result;
+}
