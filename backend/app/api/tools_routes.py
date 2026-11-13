@@ -381,6 +381,41 @@ def tool_native_apply_edits(
     return _binary_response(updated, f"{_stem(name)}-edited.pdf", "application/pdf", {"edits_applied": len(edits)})
 
 
+@tools_router.post("/native/layout-preview")
+def tool_native_layout_preview(
+    owner: Owner,
+    text: Annotated[str, Form()],
+    font_name: Annotated[str | None, Form()] = None,
+    font_size: Annotated[float, Form()] = 12.0,
+    max_width: Annotated[float | None, Form()] = None,
+):
+    """
+    Compute exact OpenType HarfBuzz text layout metrics and overflow diagnostics
+    for real-time live WYSIWYG editor synchronization.
+    """
+    from app.services.pdf.layout_engine import shape_text_layout
+
+    layout = shape_text_layout(
+        text=text,
+        font_name=font_name,
+        font_size=font_size,
+        max_width=max_width,
+    )
+    return {
+        "text": layout.text,
+        "font_family": layout.font_family,
+        "font_size": layout.font_size,
+        "total_width": round(layout.total_width, 2),
+        "total_height": round(layout.total_height, 2),
+        "ascender": round(layout.ascender, 2),
+        "descender": round(layout.descender, 2),
+        "baseline_offset": round(layout.baseline_offset, 2),
+        "is_overflow": layout.is_overflow,
+        "overflow_amount": round(layout.overflow_amount, 2),
+        "glyph_count": len(layout.glyphs),
+    }
+
+
 @tools_router.get("/ocr/capabilities")
 def tool_ocr_capabilities(owner: Owner):
     return ocr_capabilities()

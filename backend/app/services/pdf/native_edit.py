@@ -8,6 +8,12 @@ import pymupdf
 import uharfbuzz as hb
 
 from app.core.errors import AppError
+from app.services.pdf.layout_engine import (
+    LayoutResult,
+    is_khmer_text,
+    resolve_font_path,
+    shape_text_layout,
+)
 
 SUPPORTED_SIMPLE_ENCODINGS = {"/WinAnsiEncoding", "/StandardEncoding", "/MacRomanEncoding"}
 SUBSET_PREFIX_RE = re.compile(r"^/[A-Z]{6}\+")
@@ -152,56 +158,7 @@ def resolve_khmer_font(font_name: str | None = None) -> tuple[str, str]:
     Prioritizes exact match for KhmerOSBattambang, KhmerOSMuol, KhmerOS, NotoSansKhmer, NotoSerifKhmer.
     Falls back gracefully to full OpenType Khmer fonts with complete GSUB/GPOS tables.
     """
-    fn = (font_name or "").lower().replace("+", "-").replace(" ", "")
-    bundled_dir = Path(__file__).resolve().parents[2] / "fonts"
-
-    if "battambang" in fn:
-        candidates = [
-            (bundled_dir / "KhmerOSbattambang.ttf", "KhmerOSBattambang"),
-            ("/usr/share/fonts/truetype/khmeros/KhmerOSbattambang.ttf", "KhmerOSBattambang"),
-        ]
-    elif "muol" in fn or "moul" in fn:
-        candidates = [
-            (bundled_dir / "KhmerOSmuol.ttf", "KhmerOSMuol"),
-            ("/usr/share/fonts/truetype/khmeros/KhmerOSmuol.ttf", "KhmerOSMuol"),
-        ]
-    elif "serif" in fn:
-        candidates = [
-            (bundled_dir / "noto" / "NotoSerifKhmer-Regular.ttf", "Noto Serif Khmer"),
-            ("/usr/share/fonts/truetype/noto/NotoSerifKhmer-Regular.ttf", "Noto Serif Khmer"),
-        ]
-    elif "noto" in fn or "sans" in fn:
-        candidates = [
-            (bundled_dir / "noto" / "NotoSansKhmer-Regular.ttf", "Noto Sans Khmer"),
-            ("/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf", "Noto Sans Khmer"),
-        ]
-    else:
-        candidates = [
-            (bundled_dir / "KhmerOSbattambang.ttf", "KhmerOSBattambang"),
-            (bundled_dir / "KhmerOS.ttf", "KhmerOS"),
-            ("/usr/share/fonts/truetype/khmeros/KhmerOSbattambang.ttf", "KhmerOSBattambang"),
-            ("/usr/share/fonts/truetype/khmeros/KhmerOS.ttf", "KhmerOS"),
-        ]
-
-    # Additional system fallbacks
-    candidates.extend([
-        (bundled_dir / "KhmerOSbattambang.ttf", "KhmerOSBattambang"),
-        (bundled_dir / "KhmerOS.ttf", "KhmerOS"),
-        ("/usr/share/fonts/truetype/khmeros/KhmerOSbattambang.ttf", "KhmerOSBattambang"),
-        ("/usr/share/fonts/truetype/khmeros/KhmerOS.ttf", "KhmerOS"),
-        ("/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf", "Noto Sans Khmer"),
-        (bundled_dir / "noto" / "NotoSansKhmer-Regular.ttf", "Noto Sans Khmer"),
-        ("C:/Windows/Fonts/KhmerUI.ttf", "Khmer UI"),
-        ("C:/Windows/Fonts/daunpenh.ttf", "DaunPenh"),
-        ("C:/Windows/Fonts/LeelawUI.ttf", "Leelawadee UI"),
-    ])
-
-    for p, fam in candidates:
-        path_obj = Path(p)
-        if path_obj.exists():
-            return str(path_obj.resolve()), fam
-
-    raise AppError("font_not_found", "No compatible Khmer OpenType font available for rendering.", 500)
+    return resolve_font_path(font_name, is_khmer=True)
 
 
 def shape_text_runs(
@@ -405,19 +362,28 @@ def apply_native_text_edits(pdf_bytes: bytes, edits: list[dict]) -> bytes:
                 color_hex = str(e.get("color", "#000000"))
                 r, g, b = hex_to_rgb(color_hex)
 
-                glyphs, _, _ = shape_text_runs(new_text, font_path, font_size, script="Khmr", language="km")
+                layout = shape_text_layout(
+                    text=new_text,
+                    font_name=e.get("font_name") or e.get("font"),
+                    font_size=font_size,
+                )
+
+                # Inject custom ToUnicode CMap into the page's font dictionary
+                font_key = f"/{alias}"
+                if "/Resources" in pg and "/Font" in pg["/Resources"] and font_key in pg["/Resources"]["/Font"]:
+                    font_obj = pg["/Resources"]["/Font"][font_key]
+                    font_obj["/ToUnicode"] = pdf.make_stream(layout.tounicode_cmap.encode("latin1"))
 
                 cur_x = float(origin[0])
                 cur_y = page_height - float(origin[1])
 
                 stream_parts.append(f"q\n{r:.3f} {g:.3f} {b:.3f} rg\nBT\n/{alias} {font_size:.2f} Tf\n")
-                for g_info in glyphs:
-                    gx = cur_x + g_info["x_offset"]
-                    gy = cur_y + g_info["y_offset"]
-                    gid_hex = f"{g_info['gid']:04X}"
-                    stream_parts.append(f"1 0 0 1 {gx:.2f} {gy:.2f} Tm <{gid_hex}> Tj\n")
-                    cur_x += g_info["x_advance"]
-                    cur_y += g_info["y_advance"]
+                for g_info in layout.glyphs:
+                    gx = cur_x + g_info.x_offset
+                    gy = cur_y + g_info.y_offset
+                    stream_parts.append(f"1 0 0 1 {gx:.2f} {gy:.2f} Tm <{g_info.gid:04X}> Tj\n")
+                    cur_x += g_info.x_advance
+                    cur_y += g_info.y_advance
                 stream_parts.append("ET\nQ\n")
 
             if stream_parts:

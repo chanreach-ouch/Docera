@@ -86,6 +86,7 @@ export default function PdfEditor() {
   const [editingFont, setEditingFont] = useState('');
   const [editingFontSize, setEditingFontSize] = useState<number>(12);
   const [editingColor, setEditingColor] = useState('#1c302e');
+  const [isComposing, setIsComposing] = useState(false);
   const [nativeEdits, setNativeEdits] = useState<Record<string, NativeTextEdit>>({});
   const [nativeEditsPast, setNativeEditsPast] = useState<Record<string, NativeTextEdit>[]>([]);
   const [nativeEditsFuture, setNativeEditsFuture] = useState<Record<string, NativeTextEdit>[]>([]);
@@ -929,8 +930,10 @@ export default function PdfEditor() {
                                   autoFocus
                                   value={editingText}
                                   onChange={e => setEditingText(e.target.value)}
+                                  onCompositionStart={() => setIsComposing(true)}
+                                  onCompositionEnd={() => setIsComposing(false)}
                                   onKeyDown={e => {
-                                    if (e.key === 'Enter') {
+                                    if (e.key === 'Enter' && !isComposing) {
                                       e.preventDefault();
                                       commitSpanEdit(span, editingText);
                                     } else if (e.key === 'Escape') {
@@ -938,7 +941,11 @@ export default function PdfEditor() {
                                       setEditingSpanId(null);
                                     }
                                   }}
-                                  onBlur={() => commitSpanEdit(span, editingText)}
+                                  onBlur={() => {
+                                    if (!isComposing) {
+                                      commitSpanEdit(span, editingText);
+                                    }
+                                  }}
                                   style={{
                                     fontSize: displaySize,
                                     color: displayColor,

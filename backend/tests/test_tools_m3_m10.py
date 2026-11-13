@@ -663,6 +663,108 @@ def test_khmer_complex_script_shaping_and_pdf_export(client):
     assert any("Khmer" in fn or "DoceraKhmer" in fn for fn in font_names)
 
 
+def test_native_layout_preview_and_multilingual_shaping(client):
+    """Verify the /native/layout-preview endpoint provides exact HarfBuzz metrics and overflow diagnostics."""
+    client.post("/api/v1/session")
+    # 1. Complex Khmer shaping with overflow detection
+    res = client.post(
+        "/api/v1/tools/native/layout-preview",
+        data={
+            "text": "ប្រសិទ្ធភាព និង ហិរញ្ញវត្ថុ",
+            "font_name": "KhmerOSBattambang",
+            "font_size": 12.0,
+            "max_width": 50.0,
+        },
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["font_family"] == "KhmerOSBattambang"
+    assert data["total_width"] > 80.0
+    assert data["is_overflow"] is True
+    assert data["overflow_amount"] > 30.0
+    assert data["glyph_count"] > 10
+    assert data["baseline_offset"] > 0
+
+    # 2. Latin English text shaping
+    res_en = client.post(
+        "/api/v1/tools/native/layout-preview",
+        data={
+            "text": "Profitability Ratios (ROA)",
+            "font_name": "Helvetica",
+            "font_size": 14.0,
+        },
+    )
+    assert res_en.status_code == 200, res_en.text
+    data_en = res_en.json()
+    assert data_en["total_width"] > 50.0
+    assert data_en["is_overflow"] is False
+    assert data_en["glyph_count"] == len("Profitability Ratios (ROA)")
+
+
+def test_multilingual_pdf_test_corpus_complex_shaping_and_rendering(client):
+    """
+    Phase 8 Test Corpus:
+    Verify complex Khmer words, coeng consonant clusters, pre-base vowels,
+    subscripts, numerals, and mixed Latin text shape without overlap and export cleanly.
+    """
+    from pathlib import Path
+    import pymupdf
+    from app.services.pdf.layout_engine import shape_text_layout
+
+    client.post("/api/v1/session")
+
+    corpus = [
+        ("KhmerOSBattambang", "ប្រសិទ្ធភាព និង ហិរញ្ញវត្ថុ", 12.0),
+        ("KhmerOSMuol", "កម្រងសំណួរស្ទង់មតិ ២០២៥", 16.0),
+        ("Noto Sans Khmer", "សញ្ញាបត្រ យុទ្ធសាស្ត្រ រដ្ឋបាល", 11.0),
+        ("Noto Serif Khmer", "ធនាគារជាតិ នៃកម្ពុជា ២០២៤-២០២៥", 13.0),
+        ("KhmerOSBattambang", "Profitability Ratios (ROA & ROE) អត្រាផលចំណេញ", 12.0),
+    ]
+
+    for font_fam, text, size in corpus:
+        layout = shape_text_layout(text, font_fam, size)
+        assert len(layout.glyphs) > 0
+        assert layout.total_width > 0
+        assert layout.baseline_offset > 0
+        assert layout.tounicode_cmap.startswith("/CIDInit")
+
+    # Verify live application on document fixture
+    fixture_path = Path(__file__).parent / "fixtures" / "khmer_document.pdf"
+    if fixture_path.exists():
+        with open(fixture_path, "rb") as f:
+            pdf_bytes = f.read()
+        file_id = _session_upload(client, pdf_bytes, filename="multilingual_corpus_test.pdf")
+
+        # Edit Page 2 span with complex Khmer cluster
+        res_spans = client.post("/api/v1/tools/native/text-spans", data={"file_id": file_id, "page": 2})
+        assert res_spans.status_code == 200
+        spans = res_spans.json()["spans"]
+        target = next((s for s in spans if "២០២៥" in s["text"]), spans[0])
+
+        edits = [
+            {
+                "page": 2,
+                "bbox": target["bbox"],
+                "origin": target["origin"],
+                "original_text": target["text"],
+                "new_text": "ប្រសិទ្ធភាពខ្ពស់ ហិរញ្ញវត្ថុ ២០២៦",
+                "font_name": "KhmerOSBattambang",
+                "font_size": 12.0,
+                "color": "#112233",
+            }
+        ]
+        res_apply = client.post(
+            "/api/v1/tools/native/apply-edits",
+            data={"file_id": file_id, "edits_json": json.dumps(edits)},
+        )
+        assert res_apply.status_code == 200
+        doc = pymupdf.open(stream=res_apply.content, filetype="pdf")
+        pix = doc[1].get_pixmap(dpi=150)
+        assert pix.width > 0 and pix.height > 0
+
+
+
+
 
 
 

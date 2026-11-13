@@ -218,6 +218,33 @@ export const toolsApi = {
     return postBinary<{ edits_applied: number }>('/native/apply-edits', f, 'edited.pdf');
   },
 
+  nativeLayoutPreview: async (
+    text: string,
+    fontName?: string,
+    fontSize?: number,
+    maxWidth?: number,
+  ) => {
+    const f = new FormData();
+    f.append('text', text);
+    if (fontName) f.append('font_name', fontName);
+    if (fontSize) f.append('font_size', String(fontSize));
+    if (maxWidth) f.append('max_width', String(maxWidth));
+    const res = await postToolForm('/native/layout-preview', f);
+    return res.json() as Promise<{
+      text: string;
+      font_family: string;
+      font_size: number;
+      total_width: number;
+      total_height: number;
+      ascender: number;
+      descender: number;
+      baseline_offset: number;
+      is_overflow: boolean;
+      overflow_amount: number;
+      glyph_count: number;
+    }>;
+  },
+
   ocrCapabilities: async () => {
     const res = await fetch('/api/v1/tools/ocr/capabilities', { credentials: 'same-origin' });
     if (!res.ok) throw new ApiError('Could not load OCR capabilities.', 'ocr_error');
