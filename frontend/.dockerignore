@@ -1,0 +1,9 @@
+node_modules
+dist
+.cache
+.git
+.vscode
+.idea
+*.log
+coverage
+test-results

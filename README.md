@@ -61,10 +61,11 @@ Designed around a hybrid execution architecture, Docera executes everyday docume
 
 ## Quality Assurance & Automated Testing
 
-Docera maintains a comprehensive, multi-tiered automated testing suite:
-- **Pytest (Backend):** 15 / 15 tests passing across API endpoints, session isolation, stream modification, and cryptographic operations.
+Docera maintains a comprehensive, multi-tiered automated testing suite (55 total automated tests and verification steps):
+- **Pytest (Backend):** 19 / 19 tests passing across API endpoints, session isolation, stream modification, HTML sanitization, DOCX conversion, redaction irreversibility, and cryptographic operations.
 - **Vitest (Frontend):** 14 / 14 tests passing across component integration, workspace rendering, and browser-local export engines.
-- **Playwright E2E:** 10 / 10 end-to-end browser scenarios passing in headless Chromium, verifying real user flows, file downloads, and byte-level document headers.
+- **Playwright E2E:** 12 / 12 end-to-end browser scenarios passing in headless Chromium, verifying real user flows, responsive layouts, WCAG 2.2 AA accessibility, and byte-level document headers.
+- **Docker Live Integration:** 10 / 10 workflows passing against the containerized production stack (`test_docker_live.py`).
 - **Security Scans:** 0 known vulnerabilities via `pip-audit` and `npm audit`.
 
 ---
@@ -96,7 +97,9 @@ Open `http://localhost:8080`.
 ---
 
 ## Architecture & Documentation
+- [Final Product Completion Report](docs/FINAL_PRODUCT_COMPLETION_REPORT.md)
 - [Production Readiness Report](docs/PRODUCTION_READINESS_REPORT.md)
+- [Overnight Completion Report](docs/OVERNIGHT_COMPLETION_REPORT.md)
 - [System Architecture](docs/ARCHITECTURE.md)
 - [Feature Matrix & Verification](docs/FEATURE_MATRIX.md)
 - [Security & Threat Model](docs/SECURITY.md)

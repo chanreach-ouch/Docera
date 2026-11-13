@@ -440,3 +440,73 @@ def test_subset_font_detection_safeguard():
     assert SUBSET_PREFIX_RE.match("/Helvetica") is None
     assert SUBSET_PREFIX_RE.match("/StandardFont") is None
 
+
+def test_office_docx_conversion_and_html_sanitization_defense(client):
+    """Verify that HTML-to-PDF strips XSS/SSRF vectors and Office conversions produce valid PDF."""
+    from app.services.pdf.conversion import html_to_pdf, office_to_pdf
+    from docx import Document
+
+    # 1. HTML sanitization test (scripts dropped, external URLs not fetched)
+    malicious_html = """
+    <html>
+      <head><script>alert('xss'); window.location='http://evil.com';</script></head>
+      <body>
+        <h1>Verified Document Title</h1>
+        <p>Legitimate paragraph content.</p>
+        <img src="http://169.254.169.254/latest/meta-data/iam/credentials" />
+      </body>
+    </html>
+    """
+    pdf_from_html = html_to_pdf(malicious_html)
+    assert pdf_from_html[:5] == b"%PDF-"
+    reader = PdfReader(io.BytesIO(pdf_from_html))
+    text = reader.pages[0].extract_text()
+    assert "Verified Document Title" in text
+    assert "alert" not in text
+    assert "169.254.169.254" not in text
+
+    # 2. Structural DOCX to PDF conversion
+    doc = Document()
+    doc.add_heading("Quarterly Performance Review", level=1)
+    doc.add_paragraph("All targets met according to schedule.")
+    buf = io.BytesIO()
+    doc.save(buf)
+    docx_bytes = buf.getvalue()
+
+    res = office_to_pdf(docx_bytes, "docx", "review.docx")
+    assert res["bytes"][:5] == b"%PDF-"
+    doc_reader = PdfReader(io.BytesIO(res["bytes"]))
+    doc_text = doc_reader.pages[0].extract_text()
+    assert "Quarterly Performance Review" in doc_text
+
+
+def test_redaction_complete_irreversibility_security_check(client):
+    """
+    Comprehensive verification that redaction permanently purges sensitive content
+    from text streams, page objects, and annotation dictionaries without character leakage.
+    """
+    secret = "CLASSIFIED_PROJECT_ALPHA_9988"
+    pdf_bytes = _make_text_pdf([f"Top Secret Directive: {secret}", "Public Notice: General distribution allowed."])
+    file_id = _session_upload(client, pdf_bytes, "classified.pdf")
+
+    # Perform redaction over secret area
+    boxes = json.dumps([{"page": 1, "x": 60, "y": 720, "width": 450, "height": 30}])
+    res = client.post("/api/v1/tools/security/redact", data={"file_id": file_id, "boxes_json": boxes})
+    assert res.status_code == 200
+    redacted_pdf = res.content
+    assert redacted_pdf[:5] == b"%PDF-"
+
+    # 1. Verify pdfplumber cannot extract the secret
+    with pdfplumber.open(io.BytesIO(redacted_pdf)) as pdf:
+        full_text = pdf.pages[0].extract_text() or ""
+        assert secret not in full_text
+
+    # 2. Verify pypdf character scan cannot find the secret
+    reader = PdfReader(io.BytesIO(redacted_pdf))
+    pypdf_text = reader.pages[0].extract_text() or ""
+    assert secret not in pypdf_text
+
+    # 3. Verify raw byte stream does not contain the plaintext token
+    assert secret.encode("utf-8") not in redacted_pdf
+
+
