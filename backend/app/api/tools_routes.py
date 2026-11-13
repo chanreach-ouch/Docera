@@ -29,7 +29,13 @@ from app.services.pdf.forms_sign import (
     sign_pdf_cryptographic,
     verify_pdf_signatures,
 )
-from app.services.pdf.native_edit import delete_native_image, inspect_native_content, replace_native_text
+from app.services.pdf.native_edit import (
+    apply_native_text_edits,
+    delete_native_image,
+    extract_text_spans,
+    inspect_native_content,
+    replace_native_text,
+)
 from app.services.pdf.ocr import detect_scanned_pages, ocr_capabilities, run_ocr_on_pdf
 from app.services.pdf.security import (
     clean_metadata_and_sanitize,
@@ -98,7 +104,13 @@ def _binary_response(
         "Content-Security-Policy": "sandbox; default-src 'none'",
     }
     if report is not None:
-        headers["X-Docera-Report"] = json.dumps(report, ensure_ascii=True)
+        report_copy = dict(report)
+        # Avoid dumping heavy raw data structures into HTTP headers (e.g. per-page OCR arrays)
+        report_copy.pop("pages", None)
+        # Cap text preview in header to prevent exceeding HTTP standard header boundaries
+        if "text" in report_copy and isinstance(report_copy["text"], str) and len(report_copy["text"]) > 4000:
+            report_copy["text"] = report_copy["text"][:4000] + "\n\n[... Text truncated for preview in report header; full searchable text is embedded in the PDF.]"
+        headers["X-Docera-Report"] = json.dumps(report_copy, ensure_ascii=True)
         headers["Access-Control-Expose-Headers"] = "X-Docera-Report, Content-Disposition"
     return Response(content=data, media_type=media_type, headers=headers)
 
@@ -307,6 +319,46 @@ def tool_native_delete_image(
     raw, name = _read_source_pdf(request, owner, file, file_id)
     updated = delete_native_image(raw, page, op_index)
     return _binary_response(updated, f"{_stem(name)}-edited.pdf", "application/pdf", {"page": page, "op_index": op_index})
+
+
+@tools_router.post("/native/text-spans")
+def tool_native_text_spans(
+    request: Request,
+    owner: Owner,
+    page: Annotated[int, Form()] = 1,
+    file_id: Annotated[str | None, Form()] = None,
+    file: UploadFile | None = File(default=None),
+):
+    """
+    Extract structured text spans from a PDF page for interactive canvas selection and in-place editing.
+    Returns bounding boxes, font metadata, sizes, and colors.
+    """
+    raw, _ = _read_source_pdf(request, owner, file, file_id)
+    return extract_text_spans(raw, page)
+
+
+@tools_router.post("/native/apply-edits")
+def tool_native_apply_edits(
+    request: Request,
+    owner: Owner,
+    edits_json: Annotated[str, Form()],
+    file_id: Annotated[str | None, Form()] = None,
+    file: UploadFile | None = File(default=None),
+):
+    """
+    Apply genuine text edits to existing PDF text.
+    Removes the previous text from the stream and reconstructs replacement text at the exact origin.
+    """
+    import json
+    try:
+        edits = json.loads(edits_json)
+        if not isinstance(edits, list):
+            raise ValueError()
+    except Exception as exc:
+        raise AppError("invalid_request", "Invalid edits payload; must be a JSON array.", 422) from exc
+    raw, name = _read_source_pdf(request, owner, file, file_id)
+    updated = apply_native_text_edits(raw, edits)
+    return _binary_response(updated, f"{_stem(name)}-edited.pdf", "application/pdf", {"edits_applied": len(edits)})
 
 
 @tools_router.get("/ocr/capabilities")

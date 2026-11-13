@@ -184,4 +184,71 @@ test.describe('Docera PDF Editor Comprehensive Regression Suite', () => {
     expect(editBytes.length).toBeGreaterThan(100);
   });
 
+  test('08: Native PDF existing text editing and content-stream replacement', async ({ page }) => {
+    const pdfBuf = await createTestPdf('Native Text Replace', 1);
+    await page.goto('/');
+
+    const fileInput = page.locator('input[aria-label="Choose PDF files"]');
+    await fileInput.setInputFiles({ name: 'native-edit-test.pdf', mimeType: 'application/pdf', buffer: pdfBuf });
+    await expect(page.getByRole('link', { name: 'native-edit-test.pdf', exact: true })).toBeVisible({ timeout: 15_000 });
+
+    await page.locator('a[title="Edit & annotate PDF"]').first().click();
+    await expect(page.locator('.pdf-page canvas').first()).toBeVisible({ timeout: 15_000 });
+
+    // Select 'Edit Existing PDF Text' tool
+    const nativeBtn = page.locator('button[title*="Edit Existing PDF Text"]');
+    await expect(nativeBtn).toBeVisible();
+    await nativeBtn.click();
+
+    // Wait for text spans to be extracted and rendered on canvas overlay
+    await expect(page.locator('.existing-text-span').first()).toBeVisible({ timeout: 10_000 });
+
+    // Find the span containing 'Content block for page 1'
+    const targetSpan = page.locator('.existing-text-span[title*="Content block for page 1"]');
+    await expect(targetSpan).toBeVisible();
+    await targetSpan.click();
+
+    // Verify Inspector displays the selected text
+    const inspectorTextarea = page.locator('textarea[aria-label="Replacement text"]');
+    await expect(inspectorTextarea).toBeVisible();
+    await inspectorTextarea.fill('Updated Block 2026');
+
+    // Click Apply text change
+    await page.getByRole('button', { name: 'Apply text change' }).click();
+
+    // Verify visual replacement badge appears
+    await expect(page.locator('.existing-text-replacement')).toContainText('Updated Block 2026');
+
+    // Export PDF and verify binary
+    const [dl] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: /export pdf/i }).click(),
+    ]);
+    const exportedBytes = await readFile((await dl.path())!);
+    expect(exportedBytes.subarray(0, 5).toString('utf8')).toBe('%PDF-');
+    expect(exportedBytes.length).toBeGreaterThan(500);
+  });
+
+  test('09: OCR & Scan Detection runs and produces searchable PDF without gateway buffer error', async ({ page }) => {
+    const pdfBuf = await createTestPdf('OCR Searchable Test', 2);
+    await page.goto('/tools/ocr');
+
+    // Choose PDF
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles({ name: 'ocr-doc.pdf', mimeType: 'application/pdf', buffer: pdfBuf });
+    await expect(page.getByText('ocr-doc.pdf')).toBeVisible();
+
+    // Run Scan Detection
+    await page.getByRole('button', { name: 'Detect scanned pages' }).click();
+    await expect(page.getByText(/All 2 pages already contain selectable text/i)).toBeVisible({ timeout: 15_000 });
+
+    // Run OCR & Build Searchable PDF
+    await page.getByRole('button', { name: /Run OCR & Build Searchable PDF/i }).click();
+
+    // Verify successful output summary appears (not error banner)
+    await expect(page.locator('.error-notice')).toHaveCount(0);
+    await expect(page.locator('.result-summary').filter({ hasText: 'Engine:' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: /Download Searchable PDF/i })).toBeVisible();
+  });
+
 });

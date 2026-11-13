@@ -19,6 +19,7 @@ dependencies = [
   "python-pptx>=1.0.2",
   "cryptography>=50.0.2",
   "pyhanko>=0.38.1",
+  "pymupdf>=2.1",
 ]
 
 [dependency-groups]

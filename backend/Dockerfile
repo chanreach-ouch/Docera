@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr-khm \
     fonts-dejavu-core \
     fonts-liberation \
+    fonts-khmeros \
+    fonts-noto-core \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

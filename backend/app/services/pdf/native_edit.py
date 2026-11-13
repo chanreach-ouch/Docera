@@ -1,7 +1,9 @@
 import io
+import os
 import re
 
 import pikepdf
+import pymupdf
 
 from app.core.errors import AppError
 
@@ -58,11 +60,213 @@ def _font_support_info(resources: pikepdf.Object | None, font_name: str | None) 
         return False, f"Embedded subset font ({base_font.lstrip('/')}) may lack replacement glyphs", "cp1252"
     encoding = font_obj.get("/Encoding")
     if encoding is None:
-        # Built-in Standard 14 fonts (Helvetica/Times/Courier) often omit /Encoding
         return True, None, "cp1252"
     if isinstance(encoding, pikepdf.Name) and str(encoding) in SUPPORTED_SIMPLE_ENCODINGS:
         return True, None, _codec_for_encoding(str(encoding))
     return False, f"Custom font encoding ({encoding}) is not safely editable", "cp1252"
+
+
+def font_to_standard(font_name: str, flags: int = 0) -> str:
+    """Normalize arbitrary PDF font names into standard PDF font names supported by PyMuPDF."""
+    fn = font_name.lower().replace("+", "-")
+    if "-" in fn:
+        parts = fn.split("-")
+        fn = parts[-1] if len(parts) > 1 else parts[0]
+
+    is_bold = bool(flags & 16) or any(k in fn for k in ("bold", "black", "heavy", "medium", "semibold"))
+    is_italic = bool(flags & 2) or any(k in fn for k in ("italic", "oblique", "slanted"))
+
+    if any(k in fn for k in ("times", "roman", "serif", "cambria", "georgia", "garamond", "minion")):
+        if is_bold and is_italic:
+            return "times-bolditalic"
+        if is_bold:
+            return "times-bold"
+        if is_italic:
+            return "times-italic"
+        return "times-roman"
+    if any(k in fn for k in ("courier", "mono", "consolas", "menlo", "typewriter", "code")):
+        if is_bold and is_italic:
+            return "courier-boldoblique"
+        if is_bold:
+            return "courier-bold"
+        if is_italic:
+            return "courier-oblique"
+        return "courier"
+    # Default to Helvetica family
+    if is_bold and is_italic:
+        return "helv-boldoblique"
+    if is_bold:
+        return "helv-bold"
+    if is_italic:
+        return "helv-oblique"
+    return "helv"
+
+
+def int_to_hex(color_int: int) -> str:
+    """Convert PyMuPDF integer color (0xRRGGBB) to hex string #RRGGBB."""
+    r = (color_int >> 16) & 255
+    g = (color_int >> 8) & 255
+    b = color_int & 255
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def hex_to_rgb(hex_str: str) -> tuple[float, float, float]:
+    """Convert #RRGGBB string to 0.0-1.0 RGB tuple for PyMuPDF."""
+    h = (hex_str or "#000000").lstrip("#").strip()
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    if len(h) == 6:
+        try:
+            return (
+                int(h[0:2], 16) / 255.0,
+                int(h[2:4], 16) / 255.0,
+                int(h[4:6], 16) / 255.0,
+            )
+        except ValueError:
+            pass
+    return (0.0, 0.0, 0.0)
+
+
+def has_khmer(text: str) -> bool:
+    """Check if string contains any characters in the Khmer Unicode range (U+1780 to U+17FF)."""
+    return any(0x1780 <= ord(c) <= 0x17FF for c in text)
+
+
+def get_khmer_font() -> str | None:
+    """Find an available Khmer TrueType font on Windows or Linux."""
+    candidates = [
+        "C:/Windows/Fonts/daunpenh.ttf",
+        "C:/Windows/Fonts/KhmerUI.ttf",
+        "C:/Windows/Fonts/KhmerUIb.ttf",
+        "C:/Windows/Fonts/LeelawUI.ttf",
+        "C:/Windows/Fonts/LeelaUIb.ttf",
+        "/usr/share/fonts/truetype/khmeros/KhmerOS.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansKhmer-Regular.otf",
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
+
+
+def extract_text_spans(pdf_bytes: bytes, page_number: int) -> dict:
+    """
+    Extract structured text spans from a PDF page using PyMuPDF.
+    Provides precise coordinates (bbox and origin), fonts, sizes, and colors
+    for interactive on-canvas selection and in-place editing.
+    """
+    try:
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as exc:
+        raise AppError("invalid_pdf", "Failed to parse PDF document for text inspection.", 422) from exc
+
+    if page_number < 1 or page_number > len(doc):
+        raise AppError("invalid_request", f"Page {page_number} is out of bounds (1-{len(doc)}).", 422)
+
+    page = doc[page_number - 1]
+    rect = page.rect
+    d = page.get_text("dict")
+    spans: list[dict] = []
+
+    for b_idx, block in enumerate(d.get("blocks", [])):
+        if block.get("type") != 0:
+            continue
+        for l_idx, line in enumerate(block.get("lines", [])):
+            for s_idx, span in enumerate(line.get("spans", [])):
+                text = span.get("text", "")
+                if not text.strip():
+                    continue
+                font_name = span.get("font", "Helvetica")
+                flags = span.get("flags", 0)
+                color_int = span.get("color", 0)
+                spans.append({
+                    "id": f"p{page_number}-b{b_idx}-l{l_idx}-s{s_idx}",
+                    "bbox": [round(float(c), 2) for c in span["bbox"]],
+                    "origin": [round(float(c), 2) for c in span["origin"]],
+                    "text": text,
+                    "font": font_name,
+                    "standard_font": font_to_standard(font_name, flags),
+                    "font_size": round(float(span.get("size", 12.0)), 1),
+                    "color": int_to_hex(color_int),
+                    "flags": flags,
+                    "ascender": round(float(span.get("ascender", 0.8)), 3),
+                    "descender": round(float(span.get("descender", -0.2)), 3),
+                    "is_subset": "+" in font_name,
+                    "page": page_number,
+                })
+
+    return {
+        "page": page_number,
+        "width": round(rect.width, 2),
+        "height": round(rect.height, 2),
+        "spans": spans,
+        "total_spans": len(spans),
+    }
+
+
+def apply_native_text_edits(pdf_bytes: bytes, edits: list[dict]) -> bytes:
+    """
+    Apply genuine text replacements into the PDF.
+    Uses Strategy B (genuine stream redaction without white masking + high-fidelity text reconstruction)
+    to cleanly remove original text glyphs and render replacement text at exact baseline coordinates.
+    """
+    if not edits:
+        return pdf_bytes
+
+    try:
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as exc:
+        raise AppError("invalid_pdf", "Failed to parse PDF document for editing.", 422) from exc
+
+    page_edits: dict[int, list[dict]] = {}
+    for e in edits:
+        p = int(e.get("page", 1))
+        page_edits.setdefault(p, []).append(e)
+
+    for page_num, p_edits in page_edits.items():
+        if page_num < 1 or page_num > len(doc):
+            continue
+        page = doc[page_num - 1]
+
+        # Step 1: Add redaction annotations to genuinely purge old text from content stream.
+        # fill=False ensures underlying page backgrounds/colors are not concealed by a white box.
+        for e in p_edits:
+            bbox = e.get("bbox")
+            if bbox and len(bbox) == 4:
+                # Add 0.5pt padding to ensure full anti-aliased character glyph removal
+                r = pymupdf.Rect(bbox[0] - 0.5, bbox[1] - 0.5, bbox[2] + 0.5, bbox[3] + 0.5)
+                page.add_redact_annot(r, fill=False)
+
+        page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)
+
+        # Step 2: Insert replacement text at exact baseline origin
+        for e in p_edits:
+            origin = e.get("origin")
+            new_text = str(e.get("new_text", ""))
+            if not origin or len(origin) != 2:
+                continue
+            font_size = float(e.get("font_size", 12.0))
+            color_hex = str(e.get("color", "#000000"))
+            rgb_color = hex_to_rgb(color_hex)
+            font_name = str(e.get("font_name") or e.get("font") or "helv")
+            flags = int(e.get("flags", 0))
+
+            if has_khmer(new_text):
+                khmer_font = get_khmer_font()
+                if khmer_font:
+                    page.insert_text(origin, new_text, fontsize=font_size, fontfile=khmer_font, color=rgb_color)
+                else:
+                    page.insert_text(origin, new_text, fontsize=font_size, fontname="helv", color=rgb_color)
+            else:
+                std_font = font_to_standard(font_name, flags)
+                try:
+                    page.insert_text(origin, new_text, fontsize=font_size, fontname=std_font, color=rgb_color)
+                except Exception:
+                    page.insert_text(origin, new_text, fontsize=font_size, fontname="helv", color=rgb_color)
+
+    out = doc.tobytes(garbage=3, deflate=True)
+    return out
 
 
 def inspect_native_content(pdf_bytes: bytes, page_number: int) -> dict:

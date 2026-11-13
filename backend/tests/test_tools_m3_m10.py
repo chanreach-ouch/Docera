@@ -510,3 +510,50 @@ def test_redaction_complete_irreversibility_security_check(client):
     assert secret.encode("utf-8") not in redacted_pdf
 
 
+def test_native_text_spans_and_true_editing(client):
+    """
+    Verify text span extraction with PyMuPDF and genuine text replacement
+    where original text is genuinely purged and new text is inserted at exact origin.
+    """
+    pdf_bytes = _make_text_pdf(["Customer Name: John Smith", "Order Reference: ORD-2026-X9"])
+    file_id = _session_upload(client, pdf_bytes, "customer-invoice.pdf")
+
+    # 1. Extract text spans
+    res = client.post("/api/v1/tools/native/text-spans", data={"file_id": file_id, "page": 1})
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["page"] == 1
+    assert data["total_spans"] >= 2
+    spans = data["spans"]
+    target_span = next((s for s in spans if "John Smith" in s["text"]), None)
+    assert target_span is not None
+    assert "bbox" in target_span and len(target_span["bbox"]) == 4
+    assert "origin" in target_span and len(target_span["origin"]) == 2
+
+    # 2. Apply true native text edit
+    edits = [
+        {
+            "page": 1,
+            "bbox": target_span["bbox"],
+            "origin": target_span["origin"],
+            "original_text": target_span["text"],
+            "new_text": "Customer Name: David Lee",
+            "font_name": target_span["font"],
+            "font_size": target_span["font_size"],
+            "color": target_span["color"],
+        }
+    ]
+    res_edit = client.post("/api/v1/tools/native/apply-edits", data={"file_id": file_id, "edits_json": json.dumps(edits)})
+    assert res_edit.status_code == 200, res_edit.text
+    edited_pdf = res_edit.content
+    assert edited_pdf[:5] == b"%PDF-"
+
+    # 3. Independent verification via pdfplumber
+    with pdfplumber.open(io.BytesIO(edited_pdf)) as plum:
+        txt = plum.pages[0].extract_text()
+        assert "David Lee" in txt
+        assert "John Smith" not in txt
+        assert "Order Reference: ORD-2026-X9" in txt
+
+
+

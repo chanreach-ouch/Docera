@@ -24,11 +24,21 @@ async function postToolForm(path: string, form: FormData): Promise<Response> {
     throw new ApiError('Cannot reach Docera. Check that the local API is running, then retry.', 'network_error');
   }
   if (!response.ok) {
-    const body = await response.json().catch(() => null) as { error?: { message?: string; code?: string; request_id?: string } } | null;
+    const body = await response.json().catch(() => null) as { error?: { message?: string; code?: string; request_id?: string }; detail?: string | { msg?: string }[] } | null;
     if (body?.error) {
       throw new ApiError(body.error.message || 'Tool operation failed.', body.error.code || 'tool_error', body.error.request_id);
     }
-    throw new ApiError('Docera could not complete this operation.', 'tool_error');
+    if (body?.detail) {
+      const msg = typeof body.detail === 'string' ? body.detail : Array.isArray(body.detail) ? body.detail.map(d => d.msg || '').filter(Boolean).join(', ') : 'Validation error';
+      throw new ApiError(msg, 'validation_error');
+    }
+    if (response.status === 502) {
+      throw new ApiError('Bad Gateway (502): The server encountered an upstream communication error.', 'bad_gateway');
+    }
+    if (response.status === 504) {
+      throw new ApiError('Gateway Timeout (504): The operation took longer than the server timeout limit.', 'gateway_timeout');
+    }
+    throw new ApiError(`Docera operation failed (HTTP ${response.status}).`, 'tool_error');
   }
   return response;
 }
@@ -145,6 +155,53 @@ export const toolsApi = {
     f.append('page', String(page));
     f.append('op_index', String(opIndex));
     return postBinary('/native/delete-image', f, 'edited.pdf');
+  },
+
+  nativeTextSpans: (source: { file?: File; fileId?: string }, page: number) => {
+    const f = new FormData();
+    attachSource(f, source);
+    f.append('page', String(page));
+    return postJson<{
+      page: number;
+      width: number;
+      height: number;
+      spans: {
+        id: string;
+        bbox: [number, number, number, number];
+        origin: [number, number];
+        text: string;
+        font: string;
+        standard_font: string;
+        font_size: number;
+        color: string;
+        flags: number;
+        ascender: number;
+        descender: number;
+        is_subset: boolean;
+        page: number;
+      }[];
+      total_spans: number;
+    }>('/native/text-spans', f);
+  },
+
+  nativeApplyEdits: (
+    source: { file?: File; fileId?: string },
+    edits: {
+      page: number;
+      bbox: [number, number, number, number];
+      origin: [number, number];
+      original_text: string;
+      new_text: string;
+      font_name?: string;
+      font_size?: number;
+      color?: string;
+      flags?: number;
+    }[],
+  ) => {
+    const f = new FormData();
+    attachSource(f, source);
+    f.append('edits_json', JSON.stringify(edits));
+    return postBinary<{ edits_applied: number }>('/native/apply-edits', f, 'edited.pdf');
   },
 
   ocrCapabilities: async () => {

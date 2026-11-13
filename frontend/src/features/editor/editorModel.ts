@@ -45,6 +45,35 @@ export interface EditorObject {
   stampLabel?: string;
 }
 
+export interface NativeTextSpan {
+  id: string;
+  bbox: [number, number, number, number];
+  origin: [number, number];
+  text: string;
+  font: string;
+  standard_font: string;
+  font_size: number;
+  color: string;
+  flags: number;
+  ascender: number;
+  descender: number;
+  is_subset: boolean;
+  page: number; // 1-based
+}
+
+export interface NativeTextEdit {
+  spanId: string;
+  page: number; // 1-based
+  bbox: [number, number, number, number];
+  origin: [number, number];
+  original_text: string;
+  new_text: string;
+  font_name?: string;
+  font_size?: number;
+  color?: string;
+  flags?: number;
+}
+
 export interface EditorHistory {
   past: EditorObject[][];
   present: EditorObject[];

@@ -28,11 +28,13 @@ import {
   type EditorObject,
   type EditorObjectKind,
   type FontFamilyOption,
+  type NativeTextEdit,
+  type NativeTextSpan,
   type ObjectAlignAction,
 } from './editorModel';
 import { SignaturePadModal } from './SignaturePadModal';
 
-type ToolMode = 'select' | 'text' | 'rect' | 'circle' | 'line' | 'arrow' | 'ink' | 'highlight' | 'underline' | 'strikeout' | 'note' | 'stamp';
+type ToolMode = 'select' | 'edit-text' | 'text' | 'rect' | 'circle' | 'line' | 'arrow' | 'ink' | 'highlight' | 'underline' | 'strikeout' | 'note' | 'stamp';
 type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw';
 
 const PRESET_COLORS = [
@@ -69,6 +71,20 @@ export default function PdfEditor() {
   const [nativeImages, setNativeImages] = useState<{ op_index: number; name: string; width: number; height: number }[]>([]);
   const [nativeLoading, setNativeLoading] = useState(false);
   const [editingRun, setEditingRun] = useState<{ op_index: number; text: string } | null>(null);
+
+  // Real Existing-Text Editing State (interactive on-canvas selection & true replacement)
+  const [nativeSpansByPage, setNativeSpansByPage] = useState<Record<number, NativeTextSpan[]>>({});
+  const [loadingSpansPages, setLoadingSpansPages] = useState<Record<number, boolean>>({});
+  const [selectedSpan, setSelectedSpan] = useState<NativeTextSpan | null>(null);
+  const [hoveredSpanId, setHoveredSpanId] = useState<string | null>(null);
+  const [editingSpanId, setEditingSpanId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [editingFont, setEditingFont] = useState('');
+  const [editingFontSize, setEditingFontSize] = useState<number>(12);
+  const [editingColor, setEditingColor] = useState('#1c302e');
+  const [nativeEdits, setNativeEdits] = useState<Record<string, NativeTextEdit>>({});
+  const [nativeEditsPast, setNativeEditsPast] = useState<Record<string, NativeTextEdit>[]>([]);
+  const [nativeEditsFuture, setNativeEditsFuture] = useState<Record<string, NativeTextEdit>[]>([]);
 
   // Drag / Ink state with 4-corner handle support
   const [dragState, setDragState] = useState<{
@@ -168,7 +184,23 @@ export default function PdfEditor() {
 
       if (e.key === 'Escape') {
         setSelectedIds(new Set());
+        setSelectedSpan(null);
+        setEditingSpanId(null);
         setTool('select');
+        return;
+      }
+
+      if (e.key === 'Enter' && selectedSpan && !editingSpanId) {
+        e.preventDefault();
+        setEditingSpanId(selectedSpan.id);
+        return;
+      }
+
+      if ((e.key === 'e' || e.key === 'E') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setTool('edit-text');
+        setSelectedIds(new Set());
+        if (sourceBytes) void loadSpansForPage(page);
         return;
       }
 
@@ -181,8 +213,22 @@ export default function PdfEditor() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) {
+          if (tool === 'edit-text' && nativeEditsFuture.length > 0) {
+            const nextState = nativeEditsFuture[nativeEditsFuture.length - 1];
+            setNativeEditsPast(prev => [...prev, nativeEdits]);
+            setNativeEditsFuture(prev => prev.slice(0, -1));
+            setNativeEdits(nextState);
+            return;
+          }
           setHistory(redoHistory);
         } else {
+          if (tool === 'edit-text' && nativeEditsPast.length > 0) {
+            const prevState = nativeEditsPast[nativeEditsPast.length - 1];
+            setNativeEditsFuture(prev => [...prev, nativeEdits]);
+            setNativeEditsPast(prev => prev.slice(0, -1));
+            setNativeEdits(prevState);
+            return;
+          }
           setHistory(undoHistory);
         }
         return;
@@ -190,6 +236,13 @@ export default function PdfEditor() {
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
         e.preventDefault();
+        if (tool === 'edit-text' && nativeEditsFuture.length > 0) {
+          const nextState = nativeEditsFuture[nativeEditsFuture.length - 1];
+          setNativeEditsPast(prev => [...prev, nativeEdits]);
+          setNativeEditsFuture(prev => prev.slice(0, -1));
+          setNativeEdits(nextState);
+          return;
+        }
         setHistory(redoHistory);
         return;
       }
@@ -258,8 +311,11 @@ export default function PdfEditor() {
   }
 
   function handleCanvasClick(pageIndex: number, e: React.MouseEvent<HTMLDivElement>) {
-    if (tool === 'select') {
-      if (e.target === e.currentTarget) setSelectedIds(new Set());
+    if (tool === 'select' || tool === 'edit-text') {
+      if (e.target === e.currentTarget) {
+        setSelectedIds(new Set());
+        setSelectedSpan(null);
+      }
       return;
     }
     if (tool === 'ink') return;
@@ -372,11 +428,104 @@ export default function PdfEditor() {
     reader.readAsDataURL(file);
   }
 
+  async function loadSpansForPage(pageNum: number) {
+    if (nativeSpansByPage[pageNum] || loadingSpansPages[pageNum] || !sourceBytes) return;
+    setLoadingSpansPages(prev => ({ ...prev, [pageNum]: true }));
+    try {
+      const f = new File(
+        [sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer],
+        data?.filename || 'doc.pdf',
+        { type: 'application/pdf' },
+      );
+      const res = await toolsApi.nativeTextSpans({ file: f }, pageNum);
+      setNativeSpansByPage(prev => ({ ...prev, [pageNum]: res.spans }));
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Could not extract page text spans.');
+    } finally {
+      setLoadingSpansPages(prev => ({ ...prev, [pageNum]: false }));
+    }
+  }
+
+  useEffect(() => {
+    if (tool === 'edit-text' && sourceBytes) {
+      void loadSpansForPage(page);
+    }
+  }, [tool, page, !!sourceBytes]);
+
+  function pushNativeEdits(updater: (prev: Record<string, NativeTextEdit>) => Record<string, NativeTextEdit>) {
+    setNativeEditsPast(prev => [...prev.slice(-49), nativeEdits]);
+    setNativeEditsFuture([]);
+    setNativeEdits(updater);
+  }
+
+  function commitSpanEdit(span: NativeTextSpan, newText: string, extra?: { font_name?: string; font_size?: number; color?: string }) {
+    setEditingSpanId(null);
+    const fontName = extra?.font_name || editingFont || span.font;
+    const fontSize = extra?.font_size ?? editingFontSize ?? span.font_size;
+    const color = extra?.color || editingColor || span.color;
+
+    if (newText === span.text && fontName === span.font && fontSize === span.font_size && color === span.color) {
+      if (nativeEdits[span.id]) {
+        pushNativeEdits(prev => {
+          const next = { ...prev };
+          delete next[span.id];
+          return next;
+        });
+      }
+      return;
+    }
+
+    const edit: NativeTextEdit = {
+      spanId: span.id,
+      page: span.page,
+      bbox: span.bbox,
+      origin: span.origin,
+      original_text: span.text,
+      new_text: newText,
+      font_name: fontName,
+      font_size: fontSize,
+      color,
+      flags: span.flags,
+    };
+    pushNativeEdits(prev => ({ ...prev, [span.id]: edit }));
+    setStatusMsg(`Edited text "${span.text}" -> "${newText}". Staged for native PDF export.`);
+  }
+
+  function revertSpanEdit(spanId: string) {
+    if (!nativeEdits[spanId]) return;
+    pushNativeEdits(prev => {
+      const next = { ...prev };
+      delete next[spanId];
+      return next;
+    });
+    const span = Object.values(nativeSpansByPage).flat().find(s => s.id === spanId);
+    if (span) {
+      setEditingText(span.text);
+      setEditingFont(span.font);
+      setEditingFontSize(span.font_size);
+      setEditingColor(span.color);
+    }
+    setStatusMsg('Reverted text edit to original PDF text.');
+  }
+
   async function runExport(saveCopy: boolean) {
     if (!sourceBytes || !data) return;
     setBusy(true); setErrorMsg(null); setStatusMsg(null);
     try {
-      const outBytes = await exportEditedPdf(sourceBytes, objects);
+      let currentBytes = sourceBytes;
+      const editsList = Object.values(nativeEdits);
+      if (editsList.length > 0) {
+        setStatusMsg(`Applying ${editsList.length} genuine native text edits to PDF...`);
+        const f = new File(
+          [sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer],
+          data.filename,
+          { type: 'application/pdf' },
+        );
+        const res = await toolsApi.nativeApplyEdits({ file: f }, editsList);
+        currentBytes = new Uint8Array(await res.blob.arrayBuffer());
+      }
+
+      const outBytes = await exportEditedPdf(currentBytes, objects);
       const outName = data.filename.replace(/\.pdf$/i, '') + '-edited.pdf';
       if (saveCopy) {
         const f = new File([outBytes.buffer.slice(outBytes.byteOffset, outBytes.byteOffset + outBytes.byteLength) as ArrayBuffer], outName, { type: 'application/pdf' });
@@ -385,7 +534,8 @@ export default function PdfEditor() {
         setStatusMsg(`Saved edited copy "${saved.filename}" (${fileSize(saved.size_bytes)}) to workspace.`);
       } else {
         triggerDownload(outBytes, outName);
-        setStatusMsg(`Exported "${outName}" (${fileSize(outBytes.byteLength)}) with ${objects.length} objects.`);
+        const editCountMsg = editsList.length > 0 ? ` (${editsList.length} native text edits)` : '';
+        setStatusMsg(`Exported "${outName}" (${fileSize(outBytes.byteLength)})${editCountMsg}.`);
       }
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Export failed.');
@@ -511,15 +661,27 @@ export default function PdfEditor() {
                 className={`icon-button ${tool === 'select' ? 'tool-active' : ''}`}
                 title="Select & transform (V / Esc)"
                 aria-label="Select"
-                onClick={() => setTool('select')}
+                onClick={() => { setTool('select'); setSelectedSpan(null); }}
               >
                 <MousePointer2 size={16} />
+              </button>
+              <button
+                className={`icon-button ${tool === 'edit-text' ? 'tool-active' : ''}`}
+                title="Edit Existing PDF Text (E)"
+                aria-label="Edit Existing Text"
+                onClick={() => {
+                  setTool('edit-text');
+                  setSelectedIds(new Set());
+                  if (sourceBytes) void loadSpansForPage(page);
+                }}
+              >
+                <PenTool size={16} />
               </button>
               <button
                 className={`icon-button ${tool === 'text' ? 'tool-active' : ''}`}
                 title="Insert text box (T)"
                 aria-label="Insert text"
-                onClick={() => setTool('text')}
+                onClick={() => { setTool('text'); setSelectedSpan(null); }}
               >
                 <Type size={16} />
               </button>
@@ -726,11 +888,100 @@ export default function PdfEditor() {
                     <div key={info.index} className="editor-page-wrapper" data-page={info.index + 1} style={{ position: 'relative' }}>
                       <PageCanvas pdf={pdf} info={info} scale={scale} rotation={0} onActive={idx => setPage(idx + 1)} />
                       <div
-                        className={`editor-overlay ${tool !== 'select' ? 'placing' : ''}`}
+                        className={`editor-overlay ${tool !== 'select' && tool !== 'edit-text' ? 'placing' : ''}`}
                         onClick={e => handleCanvasClick(info.index, e)}
                         onPointerDown={e => handleCanvasPointerDown(info.index, e)}
                         onPointerMove={e => handleCanvasPointerMove(info.index, e)}
                       >
+                        {/* Real Native Existing-PDF Text Spans Overlay */}
+                        {tool === 'edit-text' && (nativeSpansByPage[info.index + 1] || []).map(span => {
+                          const edit = nativeEdits[span.id];
+                          const isHovered = hoveredSpanId === span.id;
+                          const isSelected = selectedSpan?.id === span.id;
+                          const isEditing = editingSpanId === span.id;
+                          const displayText = edit ? edit.new_text : span.text;
+                          const displayColor = edit?.color || span.color;
+                          const displaySize = (edit?.font_size || span.font_size) * scale;
+                          const displayFont = edit?.font_name || span.standard_font || 'Helvetica, sans-serif';
+
+                          const spanStyle: React.CSSProperties = {
+                            position: 'absolute',
+                            left: span.bbox[0] * scale,
+                            top: span.bbox[1] * scale,
+                            width: Math.max(16, (span.bbox[2] - span.bbox[0]) * scale),
+                            height: Math.max(14, (span.bbox[3] - span.bbox[1]) * scale),
+                            zIndex: isEditing ? 35 : isSelected ? 25 : isHovered ? 20 : 12,
+                          };
+
+                          if (isEditing) {
+                            return (
+                              <div key={span.id} style={spanStyle} onClick={e => e.stopPropagation()}>
+                                <input
+                                  className="existing-text-inline-input"
+                                  autoFocus
+                                  value={editingText}
+                                  onChange={e => setEditingText(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      commitSpanEdit(span, editingText);
+                                    } else if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      setEditingSpanId(null);
+                                    }
+                                  }}
+                                  onBlur={() => commitSpanEdit(span, editingText)}
+                                  style={{
+                                    fontSize: displaySize,
+                                    color: displayColor,
+                                    fontFamily: displayFont,
+                                  }}
+                                />
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={span.id}
+                              className={`existing-text-span ${isSelected ? 'selected' : ''} ${edit ? 'edited' : ''}`}
+                              style={spanStyle}
+                              title={`Click to select, double-click or Enter to edit: "${displayText}"`}
+                              onPointerEnter={() => setHoveredSpanId(span.id)}
+                              onPointerLeave={() => setHoveredSpanId(null)}
+                              onClick={e => {
+                                e.stopPropagation();
+                                setSelectedSpan(span);
+                                setEditingText(edit ? edit.new_text : span.text);
+                                setEditingFont(edit?.font_name || span.font);
+                                setEditingFontSize(edit?.font_size || span.font_size);
+                                setEditingColor(edit?.color || span.color);
+                              }}
+                              onDoubleClick={e => {
+                                e.stopPropagation();
+                                setSelectedSpan(span);
+                                setEditingSpanId(span.id);
+                                setEditingText(edit ? edit.new_text : span.text);
+                                setEditingFont(edit?.font_name || span.font);
+                                setEditingFontSize(edit?.font_size || span.font_size);
+                                setEditingColor(edit?.color || span.color);
+                              }}
+                            >
+                              {edit && (
+                                <div
+                                  className="existing-text-replacement"
+                                  style={{
+                                    color: displayColor,
+                                    fontSize: displaySize,
+                                    fontFamily: displayFont,
+                                  }}
+                                >
+                                  {edit.new_text}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                         {pageObjs.map(obj => {
                           const isSel = selectedIds.has(obj.id);
                           const style: React.CSSProperties = {
@@ -906,19 +1157,150 @@ export default function PdfEditor() {
             <aside className="properties-panel" aria-label="Properties inspector">
               <div className="panel-header">
                 <h3>Properties</h3>
-                {selectedObjects.length > 0 && (
+                {tool === 'edit-text' && (
+                  <span className="native-badge-pill"><PenTool size={11} /> Existing Text</span>
+                )}
+                {selectedObjects.length > 0 && tool !== 'edit-text' && (
                   <span className="badge available">{selectedObjects.length} selected</span>
                 )}
               </div>
 
-              {!selectedObjects.length && (
+              {/* Native Existing-Text Inspector */}
+              {tool === 'edit-text' && selectedSpan && (
+                <div className="prop-group">
+                  <div className="panel-heading">
+                    <h4 style={{ margin: 0, fontSize: 13 }}>Edit PDF Text (Page {selectedSpan.page})</h4>
+                    {nativeEdits[selectedSpan.id] && (
+                      <span className="badge available">Edited</span>
+                    )}
+                  </div>
+
+                  <div className="prop-row" style={{ marginTop: 8 }}>
+                    <span className="prop-label">Original text</span>
+                    <div style={{ fontSize: 12, padding: '4px 6px', background: 'var(--bg-subtle)', borderRadius: 4, wordBreak: 'break-word', border: '1px solid var(--border)' }}>
+                      {selectedSpan.text}
+                    </div>
+                  </div>
+
+                  <div className="prop-row" style={{ marginTop: 8 }}>
+                    <span className="prop-label">Replacement text</span>
+                    <textarea
+                      rows={3}
+                      aria-label="Replacement text"
+                      value={editingText}
+                      onChange={e => setEditingText(e.target.value)}
+                      style={{ width: '100%', boxSizing: 'border-box', font: 'inherit', fontSize: 13, padding: 6, borderRadius: 4, border: '1px solid var(--border)' }}
+                    />
+                  </div>
+
+                  <div className="prop-row">
+                    <span className="prop-label">Font</span>
+                    <select value={editingFont} onChange={e => setEditingFont(e.target.value)}>
+                      <option value={selectedSpan.font}>{selectedSpan.font} (Detected)</option>
+                      <option value="helv">Helvetica / Arial (Standard Sans)</option>
+                      <option value="times-roman">Times Roman (Standard Serif)</option>
+                      <option value="courier">Courier (Monospace)</option>
+                    </select>
+                  </div>
+
+                  <div className="prop-row">
+                    <span className="prop-label">Size</span>
+                    <input
+                      type="number"
+                      min={6}
+                      max={120}
+                      step={0.5}
+                      value={editingFontSize}
+                      onChange={e => setEditingFontSize(Number(e.target.value))}
+                      style={{ width: 70 }}
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--ink-muted)' }}>pt</span>
+                  </div>
+
+                  <div className="prop-row">
+                    <span className="prop-label">Color</span>
+                    <div className="color-swatches-row">
+                      <input
+                        type="color"
+                        className="color-picker-input"
+                        value={editingColor}
+                        onChange={e => setEditingColor(e.target.value)}
+                      />
+                      {PRESET_COLORS.map(c => (
+                        <button
+                          key={c.value}
+                          type="button"
+                          className={`swatch-circle ${editingColor === c.value ? 'active' : ''}`}
+                          style={{ backgroundColor: c.value }}
+                          title={c.label}
+                          onClick={() => setEditingColor(c.value)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="tool-panel-actions" style={{ marginTop: 12 }}>
+                    <button
+                      type="button"
+                      className="button primary small"
+                      onClick={() => commitSpanEdit(selectedSpan, editingText, { font_name: editingFont, font_size: editingFontSize, color: editingColor })}
+                    >
+                      Apply text change
+                    </button>
+                    {nativeEdits[selectedSpan.id] && (
+                      <button
+                        type="button"
+                        className="button danger small"
+                        onClick={() => revertSpanEdit(selectedSpan.id)}
+                      >
+                        Revert
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="button quiet small"
+                      onClick={() => setSelectedSpan(null)}
+                    >
+                      Done
+                    </button>
+                  </div>
+
+                  {selectedSpan.is_subset && (
+                    <small className="muted" style={{ display: 'block', marginTop: 8, fontSize: 11 }}>
+                      Embedded subset font ({selectedSpan.font}). Replacement text will be reconstructed with high-fidelity matching glyphs.
+                    </small>
+                  )}
+                </div>
+              )}
+
+              {tool === 'edit-text' && !selectedSpan && (
+                <div className="inspector-empty-state">
+                  <PenTool size={24} strokeWidth={1.5} className="muted" />
+                  <p>Click any existing text on the PDF to select and edit it. Double-click or press Enter to edit directly in-place.</p>
+                  {Object.keys(nativeEdits).length > 0 && (
+                    <div style={{ width: '100%', marginTop: 10, textAlign: 'left' }}>
+                      <strong style={{ fontSize: 12 }}>Staged text edits ({Object.keys(nativeEdits).length}):</strong>
+                      <ul className="native-list" style={{ marginTop: 4 }}>
+                        {Object.values(nativeEdits).map(ed => (
+                          <li key={ed.spanId} style={{ fontSize: 12 }}>
+                            <span>&ldquo;{ed.original_text}&rdquo; &rarr; <strong>&ldquo;{ed.new_text}&rdquo;</strong></span>
+                            <button className="text-link" style={{ fontSize: 11, color: 'var(--rust)' }} onClick={() => revertSpanEdit(ed.spanId)}>Revert</button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {tool !== 'edit-text' && !selectedObjects.length && (
                 <div className="inspector-empty-state">
                   <Move size={24} strokeWidth={1.5} className="muted" />
                   <p>Select any text, shape, image, or annotation on the canvas to inspect and edit its properties.</p>
                 </div>
               )}
 
-              {selectedObjects.length > 0 && (
+              {tool !== 'edit-text' && selectedObjects.length > 0 && (
                 <div className="prop-group">
                   <div className="tool-panel-actions">
                     <button
