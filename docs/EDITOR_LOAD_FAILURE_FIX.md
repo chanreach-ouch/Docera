@@ -48,6 +48,18 @@ In production Docker environments (`nginxinc/nginx-unprivileged:1.27-alpine-slim
 2. **Missing Retry Loop:** If an initial network glitch or transient worker instantiation occurred, there was no `onRetry` mechanism attached to `ErrorNotice`, forcing users to manually refresh the whole browser page or navigate back to the dashboard.
 3. **Double-Fetch Race Condition:** `PdfEditor.tsx` called PDF.js `getDocument(url)` to render pages and independently initiated a `fetch(url)` call to retrieve `sourceBytes` for export modifications. If the secondary fetch lagged or encountered transient network failures, editing operations remained disabled or unstable even after visual rendering succeeded.
 
+### 2.3 Root Cause 3: Stale Immutable Disk Cache & Fake Worker Dynamic Import Failure
+When browsers previously encountered the `application/octet-stream` response from Nginx, Nginx had returned `Cache-Control: public, immutable, max-age=31536000`.
+1. **Poisoned Disk Cache:** The user's browser cached the invalid `application/octet-stream` payload in local disk cache. Because `immutable` was set, subsequent visits did not revalidate with the server, continually serving the invalid MIME-type and failing `new Worker()`.
+2. **Fake Worker Dynamic Import Failure:** When `new Worker()` failed, PDF.js fell back to its internal `#setupFakeWorker()`. In PDF.js 6.x, `_setupFakeWorkerGlobal` attempts an `import(this.workerSrc)`. When `workerSrc` is pointing to the same poisoned URL (or lacks CORS headers under cross-origin contexts), the dynamic import also failed:
+   ```text
+   Setting up fake worker failed: "Failed to fetch dynamically imported module: http://localhost:8080/assets/pdf.worker.min-CIqJB0yW.mjs"
+   ```
+3. **The Multi-Layer Resolution:**
+   - **Cache-Busting Worker URL:** Set `GlobalWorkerOptions.workerSrc = \`${workerUrl}?v=1.0.1\`` to immediately bypass any stale browser disk caches.
+   - **Pre-registered In-Memory Fake Worker:** Pre-registered `globalThis.pdfjsWorker = pdfjsWorker` so that if worker instantiation is ever blocked or destroyed, PDF.js's `#mainThreadWorkerMessageHandler` directly accesses the in-memory `WorkerMessageHandler` without issuing ANY network `import()` requests.
+   - **CORS Headers:** Added `add_header Access-Control-Allow-Origin "*" always;` to all asset and worker location blocks in Nginx.
+
 ---
 
 ## 3. End-to-End Diagnostic Pipeline Trace

@@ -120,7 +120,7 @@ test.describe('Docera PDF Editor Comprehensive Regression Suite', () => {
     await page.goto(`/documents/${fakeId}/edit`);
 
     // Verify clear error notice appears
-    const errorNotice = page.locator('.viewer-error');
+    const errorNotice = page.locator('.viewer-error').first();
     await expect(errorNotice).toBeVisible({ timeout: 10_000 });
     await expect(errorNotice).toContainText(/not found|expired/i);
 

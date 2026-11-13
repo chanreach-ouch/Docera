@@ -1,7 +1,17 @@
 import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
+import * as pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-GlobalWorkerOptions.workerSrc = workerUrl;
+// 1. Configure the worker URL with explicit cache buster so stale cached octet-stream responses are bypassed
+GlobalWorkerOptions.workerSrc = `${workerUrl}?v=1.0.1`;
+
+// 2. Pre-register the worker message handler on globalThis.
+// If the browser environment blocks Web Workers or encounters network module import failure,
+// PDF.js's internal fake worker mechanism immediately uses this handler in-memory without
+// having to issue a dynamic import() fetch for an external script.
+if (typeof window !== 'undefined') {
+  (window as unknown as { pdfjsWorker?: unknown }).pdfjsWorker = pdfjsWorker;
+}
 
 export function loadPdf(url: string) {
   return getDocument({
