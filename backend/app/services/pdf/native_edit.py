@@ -1,9 +1,11 @@
 import io
 import os
+from pathlib import Path
 import re
 
 import pikepdf
 import pymupdf
+import uharfbuzz as hb
 
 from app.core.errors import AppError
 
@@ -67,11 +69,23 @@ def _font_support_info(resources: pikepdf.Object | None, font_name: str | None) 
 
 
 def font_to_standard(font_name: str, flags: int = 0) -> str:
-    """Normalize arbitrary PDF font names into standard PDF font names supported by PyMuPDF."""
+    """Normalize arbitrary PDF font names into standard PDF font names supported by Docera."""
     fn = font_name.lower().replace("+", "-")
     if "-" in fn:
         parts = fn.split("-")
         fn = parts[-1] if len(parts) > 1 else parts[0]
+
+    # Specific Khmer OpenType fonts
+    if "battambang" in fn:
+        return "KhmerOSBattambang"
+    if "muol" in fn or "moul" in fn:
+        return "KhmerOSMuol"
+    if "khmer" in fn:
+        if "serif" in fn:
+            return "Noto Serif Khmer"
+        if "noto" in fn or "sans" in fn:
+            return "Noto Sans Khmer"
+        return "KhmerOS"
 
     is_bold = bool(flags & 16) or any(k in fn for k in ("bold", "black", "heavy", "medium", "semibold"))
     is_italic = bool(flags & 2) or any(k in fn for k in ("italic", "oblique", "slanted"))
@@ -132,22 +146,112 @@ def has_khmer(text: str) -> bool:
     return any(0x1780 <= ord(c) <= 0x17FF for c in text)
 
 
-def get_khmer_font() -> str | None:
-    """Find an available Khmer TrueType font on Windows or Linux."""
-    candidates = [
-        "C:/Windows/Fonts/daunpenh.ttf",
-        "C:/Windows/Fonts/KhmerUI.ttf",
-        "C:/Windows/Fonts/KhmerUIb.ttf",
-        "C:/Windows/Fonts/LeelawUI.ttf",
-        "C:/Windows/Fonts/LeelaUIb.ttf",
-        "/usr/share/fonts/truetype/khmeros/KhmerOS.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf",
-        "/usr/share/fonts/opentype/noto/NotoSansKhmer-Regular.otf",
-    ]
-    for c in candidates:
-        if os.path.exists(c):
-            return c
-    return None
+def resolve_khmer_font(font_name: str | None = None) -> tuple[str, str]:
+    """
+    Resolve the best available Khmer TrueType font path and canonical family name.
+    Prioritizes exact match for KhmerOSBattambang, KhmerOSMuol, KhmerOS, NotoSansKhmer, NotoSerifKhmer.
+    Falls back gracefully to full OpenType Khmer fonts with complete GSUB/GPOS tables.
+    """
+    fn = (font_name or "").lower().replace("+", "-").replace(" ", "")
+    bundled_dir = Path(__file__).resolve().parents[2] / "fonts"
+
+    if "battambang" in fn:
+        candidates = [
+            (bundled_dir / "KhmerOSbattambang.ttf", "KhmerOSBattambang"),
+            ("/usr/share/fonts/truetype/khmeros/KhmerOSbattambang.ttf", "KhmerOSBattambang"),
+        ]
+    elif "muol" in fn or "moul" in fn:
+        candidates = [
+            (bundled_dir / "KhmerOSmuol.ttf", "KhmerOSMuol"),
+            ("/usr/share/fonts/truetype/khmeros/KhmerOSmuol.ttf", "KhmerOSMuol"),
+        ]
+    elif "serif" in fn:
+        candidates = [
+            (bundled_dir / "noto" / "NotoSerifKhmer-Regular.ttf", "Noto Serif Khmer"),
+            ("/usr/share/fonts/truetype/noto/NotoSerifKhmer-Regular.ttf", "Noto Serif Khmer"),
+        ]
+    elif "noto" in fn or "sans" in fn:
+        candidates = [
+            (bundled_dir / "noto" / "NotoSansKhmer-Regular.ttf", "Noto Sans Khmer"),
+            ("/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf", "Noto Sans Khmer"),
+        ]
+    else:
+        candidates = [
+            (bundled_dir / "KhmerOSbattambang.ttf", "KhmerOSBattambang"),
+            (bundled_dir / "KhmerOS.ttf", "KhmerOS"),
+            ("/usr/share/fonts/truetype/khmeros/KhmerOSbattambang.ttf", "KhmerOSBattambang"),
+            ("/usr/share/fonts/truetype/khmeros/KhmerOS.ttf", "KhmerOS"),
+        ]
+
+    # Additional system fallbacks
+    candidates.extend([
+        (bundled_dir / "KhmerOSbattambang.ttf", "KhmerOSBattambang"),
+        (bundled_dir / "KhmerOS.ttf", "KhmerOS"),
+        ("/usr/share/fonts/truetype/khmeros/KhmerOSbattambang.ttf", "KhmerOSBattambang"),
+        ("/usr/share/fonts/truetype/khmeros/KhmerOS.ttf", "KhmerOS"),
+        ("/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf", "Noto Sans Khmer"),
+        (bundled_dir / "noto" / "NotoSansKhmer-Regular.ttf", "Noto Sans Khmer"),
+        ("C:/Windows/Fonts/KhmerUI.ttf", "Khmer UI"),
+        ("C:/Windows/Fonts/daunpenh.ttf", "DaunPenh"),
+        ("C:/Windows/Fonts/LeelawUI.ttf", "Leelawadee UI"),
+    ])
+
+    for p, fam in candidates:
+        path_obj = Path(p)
+        if path_obj.exists():
+            return str(path_obj.resolve()), fam
+
+    raise AppError("font_not_found", "No compatible Khmer OpenType font available for rendering.", 500)
+
+
+def shape_text_runs(
+    text: str,
+    font_path: str,
+    font_size: float,
+    script: str = "Khmr",
+    language: str = "km",
+) -> tuple[list[dict], float, float]:
+    """
+    Shape complex text using HarfBuzz (uharfbuzz).
+    Applies OpenType GSUB (consonant clusters, subscripts, ligatures, pre-base vowels)
+    and GPOS (combining marks, vertical & horizontal offsets).
+    """
+    with open(font_path, "rb") as f:
+        font_data = f.read()
+
+    face = hb.Face(font_data)
+    font = hb.Font(face)
+    upem = float(face.upem)
+    scale = font_size / upem
+
+    buf = hb.Buffer()
+    buf.add_str(text)
+    buf.guess_segment_properties()
+    if script:
+        buf.script = script
+    if language:
+        buf.language = language
+
+    hb.shape(font, buf)
+
+    glyphs = []
+    total_width = 0.0
+    for info, pos in zip(buf.glyph_infos, buf.glyph_positions):
+        x_adv = pos.x_advance * scale
+        y_adv = pos.y_advance * scale
+        x_off = pos.x_offset * scale
+        y_off = pos.y_offset * scale
+        glyphs.append({
+            "gid": info.codepoint,
+            "cluster": info.cluster,
+            "x_advance": x_adv,
+            "y_advance": y_adv,
+            "x_offset": x_off,
+            "y_offset": y_off,
+        })
+        total_width += x_adv
+
+    return glyphs, total_width, upem
 
 
 def extract_text_spans(pdf_bytes: bytes, page_number: int) -> dict:
@@ -180,13 +284,18 @@ def extract_text_spans(pdf_bytes: bytes, page_number: int) -> dict:
                 font_name = span.get("font", "Helvetica")
                 flags = span.get("flags", 0)
                 color_int = span.get("color", 0)
+                is_khmer_span = has_khmer(text) or any(k in font_name.lower() for k in ("khmer", "battambang", "moul", "muol"))
+                std_font = font_to_standard(font_name, flags)
+                if is_khmer_span and std_font.startswith("helv"):
+                    std_font = "KhmerOSBattambang"
+
                 spans.append({
                     "id": f"p{page_number}-b{b_idx}-l{l_idx}-s{s_idx}",
                     "bbox": [round(float(c), 2) for c in span["bbox"]],
                     "origin": [round(float(c), 2) for c in span["origin"]],
                     "text": text,
                     "font": font_name,
-                    "standard_font": font_to_standard(font_name, flags),
+                    "standard_font": std_font,
                     "font_size": round(float(span.get("size", 12.0)), 1),
                     "color": int_to_hex(color_int),
                     "flags": flags,
@@ -209,7 +318,7 @@ def apply_native_text_edits(pdf_bytes: bytes, edits: list[dict]) -> bytes:
     """
     Apply genuine text replacements into the PDF.
     Uses Strategy B (genuine stream redaction without white masking + high-fidelity text reconstruction)
-    to cleanly remove original text glyphs and render replacement text at exact baseline coordinates.
+    with HarfBuzz complex-script shaping for Khmer and accurate baseline placement.
     """
     if not edits:
         return pdf_bytes
@@ -224,24 +333,25 @@ def apply_native_text_edits(pdf_bytes: bytes, edits: list[dict]) -> bytes:
         p = int(e.get("page", 1))
         page_edits.setdefault(p, []).append(e)
 
+    has_complex_edits = False
+
     for page_num, p_edits in page_edits.items():
         if page_num < 1 or page_num > len(doc):
             continue
         page = doc[page_num - 1]
 
-        # Step 1: Add redaction annotations to genuinely purge old text from content stream.
-        # fill=False ensures underlying page backgrounds/colors are not concealed by a white box.
+        # Step 1: Add redaction annotations to genuinely purge old text from content stream
         for e in p_edits:
             bbox = e.get("bbox")
             if bbox and len(bbox) == 4:
-                # Add 0.5pt padding to ensure full anti-aliased character glyph removal
+                # Add 0.5pt padding to ensure full anti-aliased glyph removal
                 r = pymupdf.Rect(bbox[0] - 0.5, bbox[1] - 0.5, bbox[2] + 0.5, bbox[3] + 0.5)
                 page.add_redact_annot(r, fill=False)
 
         page.apply_redactions(images=pymupdf.PDF_REDACT_IMAGE_NONE)
 
-        # Step 2: Insert replacement text at exact baseline origin
-        for e in p_edits:
+        # Step 2: Handle font registration and simple text insertions
+        for idx, e in enumerate(p_edits):
             origin = e.get("origin")
             new_text = str(e.get("new_text", ""))
             if not origin or len(origin) != 2:
@@ -249,24 +359,80 @@ def apply_native_text_edits(pdf_bytes: bytes, edits: list[dict]) -> bytes:
             font_size = float(e.get("font_size", 12.0))
             color_hex = str(e.get("color", "#000000"))
             rgb_color = hex_to_rgb(color_hex)
-            font_name = str(e.get("font_name") or e.get("font") or "helv")
+            font_name = str(e.get("font_name") or e.get("font") or "")
             flags = int(e.get("flags", 0))
 
-            if has_khmer(new_text):
-                khmer_font = get_khmer_font()
-                if khmer_font:
-                    page.insert_text(origin, new_text, fontsize=font_size, fontfile=khmer_font, color=rgb_color)
-                else:
-                    page.insert_text(origin, new_text, fontsize=font_size, fontname="helv", color=rgb_color)
+            if has_khmer(new_text) or has_khmer(str(e.get("original_text", ""))):
+                has_complex_edits = True
+                font_path, font_family = resolve_khmer_font(font_name)
+                alias = f"DoceraKhmer_{page_num}_{idx}"
+                page.insert_font(fontfile=font_path, fontname=alias)
+                # Write an off-page dummy space to ensure font descriptor and resources are committed by MuPDF
+                page.insert_text((-100, -100), " ", fontname=alias, fontsize=font_size)
+                e["_font_alias"] = alias
+                e["_font_path"] = font_path
             else:
+                # Standard Latin text insertion
                 std_font = font_to_standard(font_name, flags)
                 try:
                     page.insert_text(origin, new_text, fontsize=font_size, fontname=std_font, color=rgb_color)
                 except Exception:
                     page.insert_text(origin, new_text, fontsize=font_size, fontname="helv", color=rgb_color)
 
-    out = doc.tobytes(garbage=3, deflate=True)
-    return out
+    intermediate_pdf = doc.tobytes(garbage=3, deflate=True)
+
+    if not has_complex_edits:
+        return intermediate_pdf
+
+    # Step 3: Inject HarfBuzz shaped glyph instructions into PDF content streams using pikepdf
+    with pikepdf.open(io.BytesIO(intermediate_pdf)) as pdf:
+        for page_num, p_edits in page_edits.items():
+            if page_num < 1 or page_num > len(pdf.pages):
+                continue
+            pg = pdf.pages[page_num - 1]
+            page_height = float(pg.MediaBox[3])
+
+            stream_parts = []
+            for e in p_edits:
+                new_text = str(e.get("new_text", ""))
+                origin = e.get("origin")
+                if not origin or len(origin) != 2 or "_font_path" not in e:
+                    continue
+
+                font_path = e["_font_path"]
+                alias = e["_font_alias"]
+                font_size = float(e.get("font_size", 12.0))
+                color_hex = str(e.get("color", "#000000"))
+                r, g, b = hex_to_rgb(color_hex)
+
+                glyphs, _, _ = shape_text_runs(new_text, font_path, font_size, script="Khmr", language="km")
+
+                cur_x = float(origin[0])
+                cur_y = page_height - float(origin[1])
+
+                stream_parts.append(f"q\n{r:.3f} {g:.3f} {b:.3f} rg\nBT\n/{alias} {font_size:.2f} Tf\n")
+                for g_info in glyphs:
+                    gx = cur_x + g_info["x_offset"]
+                    gy = cur_y + g_info["y_offset"]
+                    gid_hex = f"{g_info['gid']:04X}"
+                    stream_parts.append(f"1 0 0 1 {gx:.2f} {gy:.2f} Tm <{gid_hex}> Tj\n")
+                    cur_x += g_info["x_advance"]
+                    cur_y += g_info["y_advance"]
+                stream_parts.append("ET\nQ\n")
+
+            if stream_parts:
+                new_stream_bytes = "".join(stream_parts).encode("latin1")
+                new_stream_obj = pdf.make_stream(new_stream_bytes)
+                if isinstance(pg.Contents, pikepdf.Array):
+                    pg.Contents.append(new_stream_obj)
+                elif pg.Contents is not None:
+                    pg.Contents = pikepdf.Array([pg.Contents, new_stream_obj])
+                else:
+                    pg.Contents = new_stream_obj
+
+        out = io.BytesIO()
+        pdf.save(out)
+        return out.getvalue()
 
 
 def inspect_native_content(pdf_bytes: bytes, page_number: int) -> dict:

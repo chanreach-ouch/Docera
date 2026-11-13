@@ -20,6 +20,8 @@ dependencies = [
   "cryptography>=50.0.2",
   "pyhanko>=0.38.1",
   "pymupdf>=2.1",
+  "uharfbuzz>=0.57.0",
+  "fonttools>=4.68.0",
 ]
 
 [dependency-groups]

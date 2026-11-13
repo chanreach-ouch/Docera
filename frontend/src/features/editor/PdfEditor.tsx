@@ -46,6 +46,10 @@ const PRESET_COLORS = [
   { label: 'Pure White', value: '#ffffff' },
 ];
 
+function hasKhmer(text: string): boolean {
+  return /[\u1780-\u17FF]/.test(text);
+}
+
 export default function PdfEditor() {
   const { id = '' } = useParams();
   const fileQuery = useQuery({ queryKey: ['file', id], queryFn: () => api.file(id) });
@@ -902,7 +906,11 @@ export default function PdfEditor() {
                           const displayText = edit ? edit.new_text : span.text;
                           const displayColor = edit?.color || span.color;
                           const displaySize = (edit?.font_size || span.font_size) * scale;
-                          const displayFont = edit?.font_name || span.standard_font || 'Helvetica, sans-serif';
+                          const isKhmer = hasKhmer(edit ? edit.new_text : span.text);
+                          const khmerFamily = "'KhmerOSBattambang', 'Noto Sans Khmer', sans-serif";
+                          const displayFont = isKhmer
+                            ? (edit?.font_name ? `'${edit.font_name}', ${khmerFamily}` : khmerFamily)
+                            : (edit?.font_name || span.standard_font || 'Helvetica, sans-serif');
 
                           const spanStyle: React.CSSProperties = {
                             position: 'absolute',
@@ -1197,9 +1205,18 @@ export default function PdfEditor() {
                     <span className="prop-label">Font</span>
                     <select value={editingFont} onChange={e => setEditingFont(e.target.value)}>
                       <option value={selectedSpan.font}>{selectedSpan.font} (Detected)</option>
-                      <option value="helv">Helvetica / Arial (Standard Sans)</option>
-                      <option value="times-roman">Times Roman (Standard Serif)</option>
-                      <option value="courier">Courier (Monospace)</option>
+                      <optgroup label="Khmer Fonts">
+                        <option value="KhmerOSBattambang">KhmerOS Battambang</option>
+                        <option value="KhmerOS">KhmerOS (Regular)</option>
+                        <option value="KhmerOSMuol">KhmerOS Muol (Heading)</option>
+                        <option value="Noto Sans Khmer">Noto Sans Khmer</option>
+                        <option value="Noto Serif Khmer">Noto Serif Khmer</option>
+                      </optgroup>
+                      <optgroup label="Standard Latin Fonts">
+                        <option value="helv">Helvetica / Arial (Standard Sans)</option>
+                        <option value="times-roman">Times Roman (Standard Serif)</option>
+                        <option value="courier">Courier (Monospace)</option>
+                      </optgroup>
                     </select>
                   </div>
 
@@ -1267,7 +1284,9 @@ export default function PdfEditor() {
 
                   {selectedSpan.is_subset && (
                     <small className="muted" style={{ display: 'block', marginTop: 8, fontSize: 11 }}>
-                      Embedded subset font ({selectedSpan.font}). Replacement text will be reconstructed with high-fidelity matching glyphs.
+                      {hasKhmer(selectedSpan.text)
+                        ? `Embedded subset font (${selectedSpan.font}). Replacements are shaped and rendered with high-fidelity OpenType font (KhmerOSBattambang).`
+                        : `Embedded subset font (${selectedSpan.font}). Replacement text will be reconstructed with high-fidelity matching glyphs.`}
                     </small>
                   )}
                 </div>

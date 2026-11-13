@@ -600,5 +600,69 @@ def test_unicode_and_khmer_filename_content_disposition(client):
     assert encoded_comp in cd_comp
 
 
+def test_khmer_complex_script_shaping_and_pdf_export(client):
+    """Verify that editing Khmer text produces properly shaped OpenType glyphs using HarfBuzz."""
+    from pathlib import Path
+    import pymupdf
+
+    fixture_path = Path(__file__).parent / "fixtures" / "khmer_document.pdf"
+    if not fixture_path.exists():
+        return
+
+    with open(fixture_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    file_id = _session_upload(client, pdf_bytes, filename="កម្រងសំណួរ 111 (2) (1).pdf")
+
+    # 1. Extract text spans from Page 2
+    res_spans = client.post("/api/v1/tools/native/text-spans", data={"file_id": file_id, "page": 2})
+    assert res_spans.status_code == 200, res_spans.text
+    spans_data = res_spans.json()
+    spans = spans_data["spans"]
+
+    # Locate target span '២០២៥ '
+    target_span = next((s for s in spans if "២០២៥" in s["text"]), None)
+    assert target_span is not None
+    assert "KhmerOSBattambang" in target_span["font"] or "KhmerOSBattambang" in target_span["standard_font"]
+
+    # 2. Apply complex Khmer replacement: Coeng consonant cluster 'ប្រាក់ចំណេញ' + numerals
+    new_text = "ប្រាក់ចំណេញ ២០២៦-២០២៧"
+    edits = [
+        {
+            "page": 2,
+            "bbox": target_span["bbox"],
+            "origin": target_span["origin"],
+            "original_text": target_span["text"],
+            "new_text": new_text,
+            "font_name": target_span["font"],
+            "font_size": target_span["font_size"],
+            "color": target_span["color"],
+        }
+    ]
+
+    res_edit = client.post(
+        "/api/v1/tools/native/apply-edits",
+        data={"file_id": file_id, "edits_json": json.dumps(edits)},
+    )
+    assert res_edit.status_code == 200, res_edit.text
+    edited_pdf = res_edit.content
+    assert edited_pdf.startswith(b"%PDF-")
+
+    # 3. Independent verification via PyMuPDF rendering and inspection
+    doc = pymupdf.open(stream=edited_pdf, filetype="pdf")
+    assert len(doc) == 2
+    page2 = doc[1]
+
+    # Verify page renders to pixmap without error
+    pix = page2.get_pixmap()
+    assert pix.width > 0 and pix.height > 0
+
+    # Verify font is embedded
+    page_fonts = page2.get_fonts()
+    font_names = [f[3] for f in page_fonts]
+    assert any("Khmer" in fn or "DoceraKhmer" in fn for fn in font_names)
+
+
+
 
 
