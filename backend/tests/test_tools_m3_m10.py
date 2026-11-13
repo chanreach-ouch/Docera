@@ -556,4 +556,49 @@ def test_native_text_spans_and_true_editing(client):
         assert "Order Reference: ORD-2026-X9" in txt
 
 
+def test_unicode_and_khmer_filename_content_disposition(client):
+    """Verify tool endpoints and native editing properly encode Unicode / Khmer filenames in Content-Disposition."""
+    import urllib.parse
+
+    khmer_filename = "កម្រងសំណួរ 111 (2) (1).pdf"
+    pdf_bytes = _make_text_pdf(["Docera Khmer Filename Test", "Editable Content"])
+    file_id = _session_upload(client, pdf_bytes, filename=khmer_filename)
+
+    # 1. Native text edits with Khmer filename
+    edits = [
+        {
+            "page": 1,
+            "bbox": [72, 700, 250, 720],
+            "origin": [72, 715],
+            "original_text": "Editable Content",
+            "new_text": "Updated Content",
+            "font_name": "Helvetica",
+            "font_size": 12.0,
+            "color": "#000000",
+        }
+    ]
+    res_edit = client.post("/api/v1/tools/native/apply-edits", data={"file_id": file_id, "edits_json": json.dumps(edits)})
+    assert res_edit.status_code == 200, res_edit.text
+    assert res_edit.content[:5] == b"%PDF-"
+    cd = res_edit.headers.get("Content-Disposition", "")
+    assert "filename*=" in cd
+    assert "UTF-8''" in cd
+    encoded_stem = urllib.parse.quote("កម្រងសំណួរ 111 (2) (1)-edited.pdf", safe="")
+    assert encoded_stem in cd
+
+    # 2. Compress tool with direct upload using Khmer filename
+    res_compress = client.post(
+        "/api/v1/tools/compress",
+        files={"file": (khmer_filename, pdf_bytes, "application/pdf")},
+        data={"preset": "balanced"},
+    )
+    assert res_compress.status_code == 200, res_compress.text
+    assert res_compress.content[:5] == b"%PDF-"
+    cd_comp = res_compress.headers.get("Content-Disposition", "")
+    assert "filename*=" in cd_comp
+    encoded_comp = urllib.parse.quote("កម្រងសំណួរ 111 (2) (1)-compressed.pdf", safe="")
+    assert encoded_comp in cd_comp
+
+
+
 

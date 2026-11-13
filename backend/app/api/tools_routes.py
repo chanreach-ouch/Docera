@@ -1,5 +1,7 @@
 import io
 import json
+import re
+import urllib.parse
 import zipfile
 from typing import Annotated, Literal
 from uuid import UUID
@@ -93,6 +95,24 @@ def _read_source_pdf(
     return raw, name
 
 
+def _build_content_disposition(filename: str) -> str:
+    """Build an RFC 5987 / RFC 6266 compliant Content-Disposition header supporting Unicode filenames."""
+    clean_name = re.sub(r"[\r\n\t]+", " ", filename).strip()
+    if not clean_name:
+        clean_name = "document.pdf"
+
+    # ASCII-safe fallback for older clients or strict ASCII headers
+    ascii_clean = re.sub(r"[^\x20-\x7E]", "", clean_name).replace('"', "").replace("\\", "").replace(";", "").strip()
+    if not ascii_clean:
+        ascii_clean = "document-edited.pdf" if clean_name.lower().endswith(".pdf") else "document"
+    elif clean_name.lower().endswith(".pdf") and not ascii_clean.lower().endswith(".pdf"):
+        ascii_clean = f"{ascii_clean}.pdf"
+
+    # RFC 5987 UTF-8 percent-encoded filename for full Unicode (e.g. Khmer, CJK, accents)
+    encoded = urllib.parse.quote(clean_name, safe="")
+    return f'attachment; filename="{ascii_clean}"; filename*=UTF-8\'\'{encoded}'
+
+
 def _binary_response(
     data: bytes,
     filename: str,
@@ -100,7 +120,7 @@ def _binary_response(
     report: dict | None = None,
 ) -> Response:
     headers = {
-        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Disposition": _build_content_disposition(filename),
         "Content-Security-Policy": "sandbox; default-src 'none'",
     }
     if report is not None:

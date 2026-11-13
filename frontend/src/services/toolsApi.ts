@@ -6,10 +6,24 @@ export interface ToolBinaryResult<T = Record<string, unknown>> {
   report: T;
 }
 
-function parseFilename(disposition: string | null, fallback: string): string {
+export function parseFilename(disposition: string | null, fallback: string): string {
   if (!disposition) return fallback;
-  const match = /filename="?([^"]+)"?/i.exec(disposition);
-  return match?.[1] || fallback;
+  // 1. Check for RFC 5987 / RFC 6266 filename*=UTF-8''<encoded>
+  const rfcMatch = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;\r\n]+)/i.exec(disposition);
+  if (rfcMatch?.[1]) {
+    try {
+      const decoded = decodeURIComponent(rfcMatch[1].trim().replace(/^["']|["']$/g, ''));
+      if (decoded) return decoded;
+    } catch {
+      // ignore and fall back
+    }
+  }
+  // 2. Standard filename="..." or filename=...
+  const quotedMatch = /filename\s*=\s*"([^"]+)"/i.exec(disposition);
+  if (quotedMatch?.[1]) return quotedMatch[1];
+  const unquotedMatch = /filename\s*=\s*([^;\s]+)/i.exec(disposition);
+  if (unquotedMatch?.[1]) return unquotedMatch[1];
+  return fallback;
 }
 
 async function postToolForm(path: string, form: FormData): Promise<Response> {
