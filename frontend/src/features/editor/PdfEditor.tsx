@@ -14,7 +14,7 @@ import { toolsApi } from '../../services/toolsApi';
 import { fileSize } from '../../services/format';
 import { ErrorNotice } from '../../components/ErrorNotice';
 import { PageCanvas } from '../pdf-viewer/PageCanvas';
-import { fitScale, loadPdf, pageDimensions } from '../pdf-viewer/pdf';
+import { fitScale, formatPdfLoadError, loadPdf, pageDimensions } from '../pdf-viewer/pdf';
 import { triggerDownload } from '../organize/pdfOrganize';
 import { exportEditedPdf } from './editorExport';
 import {
@@ -52,6 +52,7 @@ export default function PdfEditor() {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState<number | 'width' | 'page'>('width');
   const [viewport, setViewport] = useState({ width: 820, height: 760 });
@@ -91,19 +92,43 @@ export default function PdfEditor() {
   const primarySelected = selectedObjects.length === 1 ? selectedObjects[0] : null;
 
   useEffect(() => {
-    if (!data?.id) return;
+    const docId = data?.id || id;
+    if (!docId) return;
     let disposed = false;
-    setPdf(null); setLoadError(null);
-    const task = loadPdf(fileUrl(data.id));
-    void task.promise.then(value => { if (!disposed) setPdf(value); }).catch(() => {
-      if (!disposed) setLoadError(new Error('Could not load PDF in editor.'));
-    });
-    void fetch(fileUrl(data.id), { credentials: 'same-origin' })
-      .then(r => r.arrayBuffer())
-      .then(buf => { if (!disposed) setSourceBytes(new Uint8Array(buf)); })
+    setPdf(null);
+    setLoadError(null);
+
+    const task = loadPdf(fileUrl(docId));
+    void task.promise
+      .then(value => {
+        if (disposed) return;
+        setPdf(value);
+        // Also retrieve raw source bytes directly from PDF.js proxy for export reliability
+        void value.getData().then(bytes => {
+          if (!disposed) setSourceBytes(bytes);
+        }).catch(() => undefined);
+      })
+      .catch(err => {
+        if (!disposed) {
+          setLoadError(formatPdfLoadError(err));
+        }
+      });
+
+    void fetch(fileUrl(docId), { credentials: 'same-origin' })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then(buf => {
+        if (!disposed) setSourceBytes(new Uint8Array(buf));
+      })
       .catch(() => undefined);
-    return () => { disposed = true; void task.destroy().catch(() => undefined); };
-  }, [data?.id]);
+
+    return () => {
+      disposed = true;
+      void task.destroy().catch(() => undefined);
+    };
+  }, [data?.id, id, loadAttempt]);
 
   useEffect(() => {
     if (!scrollRef.current) return;
@@ -435,9 +460,9 @@ export default function PdfEditor() {
             <ArrowLeft size={18} />
           </Link>
           <div className="viewer-title">
-            <strong>{data ? data.filename : 'PDF Editor'}</strong>
+            <strong>{data ? data.filename : (fileQuery.isError ? 'Document not found' : 'PDF Editor')}</strong>
             <span className="viewer-title-sub">
-              {data ? `${data.page_count} ${data.page_count === 1 ? 'page' : 'pages'} · ${objects.length} placed objects` : 'Loading…'}
+              {data ? `${data.page_count} ${data.page_count === 1 ? 'page' : 'pages'} · ${objects.length} placed objects` : (fileQuery.isError ? 'Unable to load document' : 'Loading…')}
             </span>
           </div>
         </div>
@@ -454,8 +479,18 @@ export default function PdfEditor() {
         )}
       </header>
 
-      {fileQuery.error && <div className="viewer-error"><ErrorNotice error={fileQuery.error} /></div>}
-      {loadError && <div className="viewer-error"><ErrorNotice error={loadError} /></div>}
+      {fileQuery.error && (
+        <div className="viewer-error">
+          <ErrorNotice error={fileQuery.error} onRetry={() => void fileQuery.refetch()} />
+          <Link to="/" className="text-link">Return to workspace</Link>
+        </div>
+      )}
+      {loadError && (
+        <div className="viewer-error">
+          <ErrorNotice error={loadError} onRetry={() => setLoadAttempt(v => v + 1)} />
+          <Link to="/" className="text-link">Return to workspace</Link>
+        </div>
+      )}
 
       {data && pdf && (
         <>

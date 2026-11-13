@@ -10,7 +10,7 @@ import { api, fileUrl } from '../../services/api';
 import { expiryLabel, fileSize } from '../../services/format';
 import { ErrorNotice } from '../../components/ErrorNotice';
 import { PageCanvas } from './PageCanvas';
-import { fitScale, loadPdf, pageDimensions } from './pdf';
+import { fitScale, formatPdfLoadError, loadPdf, pageDimensions } from './pdf';
 
 export default function PdfViewer() {
   const { id = '' } = useParams();
@@ -40,8 +40,8 @@ export default function PdfViewer() {
     let disposed = false;
     setPdf(null); setLoadError(null);
     const task = loadPdf(fileUrl(validId));
-    void task.promise.then(value => { if (!disposed) setPdf(value); }).catch(() => {
-      if (!disposed) setLoadError(new Error('The PDF could not be opened. It may have expired or use unsupported PDF features. Reopen your workspace or try another file.'));
+    void task.promise.then(value => { if (!disposed) setPdf(value); }).catch(err => {
+      if (!disposed) setLoadError(formatPdfLoadError(err));
     });
     return () => { disposed = true; void task.destroy().catch(() => undefined); };
   }, [validId, loadAttempt]);

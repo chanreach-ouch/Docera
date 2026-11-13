@@ -21,3 +21,28 @@ export function fitScale(width: number, height: number, viewportWidth: number, v
   const availableHeight = Math.max(160, viewportHeight - 48);
   return Math.max(0.1, Math.min(3, mode === 'width' ? availableWidth / width : Math.min(availableWidth / width, availableHeight / height)));
 }
+
+export function formatPdfLoadError(err: unknown): Error {
+  if (typeof err === 'object' && err !== null) {
+    const e = err as { name?: string; message?: string; status?: number };
+    if (e.name === 'PasswordException' || e.message?.toLowerCase().includes('password')) {
+      return new Error('This PDF is password-protected. Please unlock it using the Protect & Redact tool before opening.');
+    }
+    if (e.name === 'InvalidPDFException' || e.message?.toLowerCase().includes('invalid pdf')) {
+      return new Error('The document appears to be corrupted or is not a valid PDF file.');
+    }
+    if (e.name === 'MissingPDFException' || (e.name === 'UnexpectedResponseException' && e.status === 404)) {
+      return new Error('The document was not found or has expired. Please re-upload your document.');
+    }
+    if (e.name === 'UnexpectedResponseException' && (e.status === 401 || e.status === 403)) {
+      return new Error('Your session has expired. Please refresh the page or upload your file again.');
+    }
+    if (e.name === 'UnexpectedResponseException' && e.status && e.status >= 500) {
+      return new Error(`Server error (${e.status}) while retrieving the PDF. Please retry.`);
+    }
+    if (e.message && !e.message.toLowerCase().includes('worker was destroyed')) {
+      return new Error(`Could not load PDF in editor: ${e.message}`);
+    }
+  }
+  return new Error('Could not load PDF in editor. It may have expired or use unsupported PDF features.');
+}

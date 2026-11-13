@@ -12,6 +12,11 @@ RUN npm run build
 # Stage 2: Serve via Nginx unprivileged
 FROM nginxinc/nginx-unprivileged:1.27-alpine-slim
 
+USER root
+# Ensure nginx mime.types includes .mjs as application/javascript for ES module workers
+RUN grep -q "mjs" /etc/nginx/mime.types || sed -i 's/application\/javascript                           js;/application\/javascript                           js mjs;/' /etc/nginx/mime.types
+USER 101
+
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
