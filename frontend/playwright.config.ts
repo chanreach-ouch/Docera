@@ -17,13 +17,13 @@ export default defineConfig({
     {
       command: '..\\backend\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir ../backend --host 127.0.0.1 --port 8000',
       url: 'http://127.0.0.1:8000/api/v1/health',
-      reuseExistingServer: false,
+      reuseExistingServer: true,
       timeout: 60_000,
     },
     {
       command: 'npx vite --host 127.0.0.1 --port 5173',
       url: 'http://127.0.0.1:5173',
-      reuseExistingServer: false,
+      reuseExistingServer: true,
       timeout: 60_000,
     },
   ],
