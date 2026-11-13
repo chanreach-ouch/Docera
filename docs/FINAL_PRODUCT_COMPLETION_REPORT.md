@@ -1,6 +1,7 @@
 # Docera — Final Product Completion & Production Release Report
 
 **Release Version:** v1.0.0-final  
+**Release Commit:** `0d2cde578f2ec64757304eefebbc3e4f7158f000`  
 **Date:** 2026-11-13  
 **Status:** **RELEASE-READY / VERIFIED PRODUCTION GRADE**  
 **Dedicated Branch:** `release/v1.0-final`  
