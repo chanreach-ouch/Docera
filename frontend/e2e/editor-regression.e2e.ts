@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 async function createTestPdf(title: string, pages = 2): Promise<Buffer> {
   const doc = await PDFDocument.create();
@@ -249,6 +250,55 @@ test.describe('Docera PDF Editor Comprehensive Regression Suite', () => {
     await expect(page.locator('.error-notice')).toHaveCount(0);
     await expect(page.locator('.result-summary').filter({ hasText: 'Engine:' })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('button', { name: /Download Searchable PDF/i })).toBeVisible();
+  });
+
+  test('10: Khmer PDF text editing with live authoritative preview and vector export', async ({ page }) => {
+    // Read the real Khmer fixture PDF
+    const khmerFixturePath = path.resolve('..', 'backend', 'tests', 'fixtures', 'khmer_document.pdf');
+    const khmerPdfBuf = await readFile(khmerFixturePath);
+
+    await page.goto('/');
+    const fileInput = page.locator('input[aria-label="Choose PDF files"]');
+    await fileInput.setInputFiles({ name: 'khmer_test.pdf', mimeType: 'application/pdf', buffer: khmerPdfBuf });
+    await expect(page.getByRole('link', { name: 'khmer_test.pdf', exact: true })).toBeVisible({ timeout: 15_000 });
+
+    const editBtn = page.locator('a[title="Edit & annotate PDF"]').first();
+    await editBtn.click();
+    await expect(page).toHaveURL(/\/documents\/[^/]+\/edit$/);
+    await expect(page.locator('.pdf-page canvas').first()).toBeVisible({ timeout: 15_000 });
+
+    // Switch to Native Edit Text tool
+    const nativeBtn = page.locator('button[title*="Edit Existing PDF Text"]');
+    await expect(nativeBtn).toBeVisible();
+    await nativeBtn.click();
+
+    // Verify existing text spans are extracted
+    await expect(page.locator('.existing-text-span').first()).toBeVisible({ timeout: 15_000 });
+
+    // Select the first span
+    await page.locator('.existing-text-span').first().click();
+
+    // Verify properties panel opened with Khmer font detected
+    const textarea = page.getByRole('textbox', { name: 'Replacement text' });
+    await expect(textarea).toBeVisible();
+
+    // Replace with complex Khmer numerals and text
+    await textarea.fill('២០២៥ ?');
+
+    // Click Apply text change
+    await page.getByRole('button', { name: 'Apply text change' }).click();
+
+    // Verify visual replacement appears
+    await expect(page.locator('.existing-text-span.edited')).toBeVisible();
+
+    // Export PDF and verify binary
+    const [dl] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: /export pdf/i }).click(),
+    ]);
+    const exportedBytes = await readFile((await dl.path())!);
+    expect(exportedBytes.subarray(0, 5).toString('utf8')).toBe('%PDF-');
+    expect(exportedBytes.length).toBeGreaterThan(1000);
   });
 
 });

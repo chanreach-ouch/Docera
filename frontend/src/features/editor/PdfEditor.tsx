@@ -14,7 +14,13 @@ import { toolsApi } from '../../services/toolsApi';
 import { fileSize } from '../../services/format';
 import { ErrorNotice } from '../../components/ErrorNotice';
 import { PageCanvas } from '../pdf-viewer/PageCanvas';
-import { fitScale, formatPdfLoadError, loadPdf, pageDimensions } from '../pdf-viewer/pdf';
+import { fitScale, formatPdfLoadError, loadPdf, loadPdfFromData, pageDimensions } from '../pdf-viewer/pdf';
+import {
+  cleanPdfFontName,
+  hasKhmerText,
+  preloadAllKhmerFonts,
+  resolveEditorFontFamily,
+} from '../../services/fontResolver';
 import { triggerDownload } from '../organize/pdfOrganize';
 import { exportEditedPdf } from './editorExport';
 import {
@@ -46,16 +52,15 @@ const PRESET_COLORS = [
   { label: 'Pure White', value: '#ffffff' },
 ];
 
-function hasKhmer(text: string): boolean {
-  return /[\u1780-\u17FF]/.test(text);
-}
-
 export default function PdfEditor() {
   const { id = '' } = useParams();
   const fileQuery = useQuery({ queryKey: ['file', id], queryFn: () => api.file(id) });
   const queryClient = useQueryClient();
 
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<PDFDocumentProxy | null>(null);
+  const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null);
+  const [isPreviewSyncing, setIsPreviewSyncing] = useState(false);
   const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -112,11 +117,84 @@ export default function PdfEditor() {
   const selectedObjects = objects.filter(o => selectedIds.has(o.id));
   const primarySelected = selectedObjects.length === 1 ? selectedObjects[0] : null;
 
+  // Eagerly preload all Khmer OpenType fonts to prevent any rendering jitter
+  useEffect(() => {
+    void preloadAllKhmerFonts();
+    return () => {
+      setPreviewPdf(prev => {
+        void prev?.cleanup().catch(() => undefined);
+        return null;
+      });
+    };
+  }, []);
+
+  // Live Authoritative PDF Preview for Native Existing-Text Edits
+  useEffect(() => {
+    const editsList = Object.values(nativeEdits);
+    if (editsList.length === 0) {
+      setPreviewPdf(prev => {
+        void prev?.cleanup().catch(() => undefined);
+        return null;
+      });
+      setPreviewBytes(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      if (!sourceBytes || !data) return;
+      setIsPreviewSyncing(true);
+      try {
+        const f = new File(
+          [sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer],
+          data.filename,
+          { type: 'application/pdf' },
+        );
+        const res = await toolsApi.nativeApplyEdits({ file: f }, editsList, controller.signal);
+        const buf = await res.blob.arrayBuffer();
+        if (controller.signal.aborted) return;
+
+        const task = loadPdfFromData(buf);
+        const newProxy = await task.promise;
+        if (controller.signal.aborted) {
+          void newProxy.cleanup().catch(() => undefined);
+          return;
+        }
+
+        setPreviewPdf(prev => {
+          if (prev && prev !== newProxy) {
+            void prev.cleanup().catch(() => undefined);
+          }
+          return newProxy;
+        });
+        setPreviewBytes(new Uint8Array(buf));
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          console.warn('Failed to update live preview PDF:', err);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsPreviewSyncing(false);
+        }
+      }
+    }, 200);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [nativeEdits, sourceBytes, data]);
+
   useEffect(() => {
     const docId = data?.id || id;
     if (!docId) return;
     let disposed = false;
     setPdf(null);
+    setPreviewPdf(prev => {
+      void prev?.cleanup().catch(() => undefined);
+      return null;
+    });
+    setPreviewBytes(null);
     setLoadError(null);
 
     const task = loadPdf(fileUrl(docId));
@@ -465,11 +543,13 @@ export default function PdfEditor() {
 
   function commitSpanEdit(span: NativeTextSpan, newText: string, extra?: { font_name?: string; font_size?: number; color?: string }) {
     setEditingSpanId(null);
-    const fontName = extra?.font_name || editingFont || span.font;
+    const resolvedDefaultFont = resolveEditorFontFamily(span.font, newText);
+    const rawFont = extra?.font_name || editingFont || span.font;
+    const fontName = cleanPdfFontName(rawFont) || resolvedDefaultFont;
     const fontSize = extra?.font_size ?? editingFontSize ?? span.font_size;
     const color = extra?.color || editingColor || span.color;
 
-    if (newText === span.text && fontName === span.font && fontSize === span.font_size && color === span.color) {
+    if (newText === span.text && fontName === cleanPdfFontName(span.font) && fontSize === span.font_size && color === span.color) {
       if (nativeEdits[span.id]) {
         pushNativeEdits(prev => {
           const next = { ...prev };
@@ -520,14 +600,18 @@ export default function PdfEditor() {
       let currentBytes = sourceBytes;
       const editsList = Object.values(nativeEdits);
       if (editsList.length > 0) {
-        setStatusMsg(`Applying ${editsList.length} genuine native text edits to PDF...`);
-        const f = new File(
-          [sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer],
-          data.filename,
-          { type: 'application/pdf' },
-        );
-        const res = await toolsApi.nativeApplyEdits({ file: f }, editsList);
-        currentBytes = new Uint8Array(await res.blob.arrayBuffer());
+        if (previewBytes) {
+          currentBytes = previewBytes;
+        } else {
+          setStatusMsg(`Applying ${editsList.length} genuine native text edits to PDF...`);
+          const f = new File(
+            [sourceBytes.buffer.slice(sourceBytes.byteOffset, sourceBytes.byteOffset + sourceBytes.byteLength) as ArrayBuffer],
+            data.filename,
+            { type: 'application/pdf' },
+          );
+          const res = await toolsApi.nativeApplyEdits({ file: f }, editsList);
+          currentBytes = new Uint8Array(await res.blob.arrayBuffer());
+        }
       }
 
       const outBytes = await exportEditedPdf(currentBytes, objects);
@@ -618,6 +702,11 @@ export default function PdfEditor() {
             <strong>{data ? data.filename : (fileQuery.isError ? 'Document not found' : 'PDF Editor')}</strong>
             <span className="viewer-title-sub">
               {data ? `${data.page_count} ${data.page_count === 1 ? 'page' : 'pages'} · ${objects.length} placed objects` : (fileQuery.isError ? 'Unable to load document' : 'Loading…')}
+              {Object.keys(nativeEdits).length > 0 && (
+                <span style={{ marginLeft: 8 }} className={`live-preview-pill ${isPreviewSyncing ? 'syncing' : ''}`}>
+                  {isPreviewSyncing ? 'Syncing WYSIWYG…' : `${Object.keys(nativeEdits).length} text ${Object.keys(nativeEdits).length === 1 ? 'edit' : 'edits'} live`}
+                </span>
+              )}
             </span>
           </div>
         </div>
@@ -876,7 +965,7 @@ export default function PdfEditor() {
                         scrollRef.current?.querySelector(`[data-page="${info.index + 1}"]`)?.scrollIntoView({ block: 'start' });
                       }}
                     >
-                      <PageCanvas pdf={pdf} info={info} scale={110 / Math.max(info.width, info.height)} rotation={0} thumbnail />
+                      <PageCanvas pdf={previewPdf || pdf} info={info} scale={110 / Math.max(info.width, info.height)} rotation={0} thumbnail />
                       <span className="thumbnail-page-number">{info.index + 1}</span>
                     </button>
                   </li>
@@ -891,7 +980,7 @@ export default function PdfEditor() {
                   const pageObjs = objects.filter(o => o.pageIndex === info.index);
                   return (
                     <div key={info.index} className="editor-page-wrapper" data-page={info.index + 1} style={{ position: 'relative' }}>
-                      <PageCanvas pdf={pdf} info={info} scale={scale} rotation={0} onActive={idx => setPage(idx + 1)} />
+                      <PageCanvas pdf={previewPdf || pdf} info={info} scale={scale} rotation={0} onActive={idx => setPage(idx + 1)} />
                       <div
                         className={`editor-overlay ${tool !== 'select' && tool !== 'edit-text' ? 'placing' : ''}`}
                         onClick={e => handleCanvasClick(info.index, e)}
@@ -907,11 +996,10 @@ export default function PdfEditor() {
                           const displayText = edit ? edit.new_text : span.text;
                           const displayColor = edit?.color || span.color;
                           const displaySize = (edit?.font_size || span.font_size) * scale;
-                          const isKhmer = hasKhmer(edit ? edit.new_text : span.text);
-                          const khmerFamily = "'KhmerOSBattambang', 'Noto Sans Khmer', sans-serif";
-                          const displayFont = isKhmer
-                            ? (edit?.font_name ? `'${edit.font_name}', ${khmerFamily}` : khmerFamily)
-                            : (edit?.font_name || span.standard_font || 'Helvetica, sans-serif');
+                          const rawFont = edit?.font_name || span.font;
+                          const resolvedFont = resolveEditorFontFamily(rawFont, edit ? edit.new_text : span.text);
+                          const displayFont = `'${resolvedFont}', sans-serif`;
+                          const isPreviewApplied = Boolean(previewPdf && edit);
 
                           const spanStyle: React.CSSProperties = {
                             position: 'absolute',
@@ -959,7 +1047,7 @@ export default function PdfEditor() {
                           return (
                             <div
                               key={span.id}
-                              className={`existing-text-span ${isSelected ? 'selected' : ''} ${edit ? 'edited' : ''}`}
+                              className={`existing-text-span ${isSelected ? 'selected' : ''} ${edit ? 'edited' : ''} ${isPreviewApplied ? 'preview-synced' : ''}`}
                               style={spanStyle}
                               title={`Click to select, double-click or Enter to edit: "${displayText}"`}
                               onPointerEnter={() => setHoveredSpanId(span.id)}
@@ -968,7 +1056,7 @@ export default function PdfEditor() {
                                 e.stopPropagation();
                                 setSelectedSpan(span);
                                 setEditingText(edit ? edit.new_text : span.text);
-                                setEditingFont(edit?.font_name || span.font);
+                                setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
                                 setEditingColor(edit?.color || span.color);
                               }}
@@ -977,7 +1065,7 @@ export default function PdfEditor() {
                                 setSelectedSpan(span);
                                 setEditingSpanId(span.id);
                                 setEditingText(edit ? edit.new_text : span.text);
-                                setEditingFont(edit?.font_name || span.font);
+                                setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
                                 setEditingColor(edit?.color || span.color);
                               }}
@@ -1204,6 +1292,12 @@ export default function PdfEditor() {
                       aria-label="Replacement text"
                       value={editingText}
                       onChange={e => setEditingText(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          commitSpanEdit(selectedSpan, editingText, { font_name: editingFont, font_size: editingFontSize, color: editingColor });
+                        }
+                      }}
                       style={{ width: '100%', boxSizing: 'border-box', font: 'inherit', fontSize: 13, padding: 6, borderRadius: 4, border: '1px solid var(--border)' }}
                     />
                   </div>
@@ -1211,7 +1305,7 @@ export default function PdfEditor() {
                   <div className="prop-row">
                     <span className="prop-label">Font</span>
                     <select value={editingFont} onChange={e => setEditingFont(e.target.value)}>
-                      <option value={selectedSpan.font}>{selectedSpan.font} (Detected)</option>
+                      <option value={cleanPdfFontName(selectedSpan.font)}>{cleanPdfFontName(selectedSpan.font)} (Detected)</option>
                       <optgroup label="Khmer Fonts">
                         <option value="KhmerOSBattambang">KhmerOS Battambang</option>
                         <option value="KhmerOS">KhmerOS (Regular)</option>
@@ -1291,7 +1385,7 @@ export default function PdfEditor() {
 
                   {selectedSpan.is_subset && (
                     <small className="muted" style={{ display: 'block', marginTop: 8, fontSize: 11 }}>
-                      {hasKhmer(selectedSpan.text)
+                      {hasKhmerText(selectedSpan.text)
                         ? `Embedded subset font (${selectedSpan.font}). Replacements are shaped and rendered with high-fidelity OpenType font (KhmerOSBattambang).`
                         : `Embedded subset font (${selectedSpan.font}). Replacement text will be reconstructed with high-fidelity matching glyphs.`}
                     </small>

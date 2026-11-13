@@ -26,15 +26,17 @@ export function parseFilename(disposition: string | null, fallback: string): str
   return fallback;
 }
 
-async function postToolForm(path: string, form: FormData): Promise<Response> {
+async function postToolForm(path: string, form: FormData, signal?: AbortSignal): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(`/api/v1/tools${path}`, {
       method: 'POST',
       body: form,
       credentials: 'same-origin',
+      signal,
     });
-  } catch {
+  } catch (err) {
+    if (signal?.aborted) throw err;
     throw new ApiError('Cannot reach Docera. Check that the local API is running, then retry.', 'network_error');
   }
   if (!response.ok) {
@@ -57,8 +59,8 @@ async function postToolForm(path: string, form: FormData): Promise<Response> {
   return response;
 }
 
-async function postBinary<T = Record<string, unknown>>(path: string, form: FormData, fallbackFilename: string): Promise<ToolBinaryResult<T>> {
-  const response = await postToolForm(path, form);
+async function postBinary<T = Record<string, unknown>>(path: string, form: FormData, fallbackFilename: string, signal?: AbortSignal): Promise<ToolBinaryResult<T>> {
+  const response = await postToolForm(path, form, signal);
   const blob = await response.blob();
   const filename = parseFilename(response.headers.get('content-disposition'), fallbackFilename);
   const reportHeader = response.headers.get('x-docera-report');
@@ -211,11 +213,12 @@ export const toolsApi = {
       color?: string;
       flags?: number;
     }[],
+    signal?: AbortSignal,
   ) => {
     const f = new FormData();
     attachSource(f, source);
     f.append('edits_json', JSON.stringify(edits));
-    return postBinary<{ edits_applied: number }>('/native/apply-edits', f, 'edited.pdf');
+    return postBinary<{ edits_applied: number }>('/native/apply-edits', f, 'edited.pdf', signal);
   },
 
   nativeLayoutPreview: async (

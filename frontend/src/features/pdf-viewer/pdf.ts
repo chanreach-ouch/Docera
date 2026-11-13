@@ -22,6 +22,15 @@ export function loadPdf(url: string) {
   });
 }
 
+export function loadPdfFromData(data: Uint8Array | ArrayBuffer) {
+  return getDocument({
+    data, enableXfa: false,
+    cMapUrl: '/pdf-assets/cmaps/', cMapPacked: true,
+    standardFontDataUrl: '/pdf-assets/standard_fonts/', wasmUrl: '/pdf-assets/wasm/',
+    maxImageSize: 16_000_000, canvasMaxAreaInBytes: 32_000_000,
+  });
+}
+
 export function pageDimensions(width: number, height: number, rotation: number) {
   return rotation % 180 ? { width: height, height: width } : { width, height };
 }
