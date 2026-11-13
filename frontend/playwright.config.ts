@@ -1,4 +1,13 @@
 import { defineConfig } from '@playwright/test';
+import path from 'node:path';
+import fs from 'node:fs';
+
+const isWin = process.platform === 'win32';
+const venvPy = isWin
+  ? path.resolve('..', 'backend', '.venv', 'Scripts', 'python.exe')
+  : path.resolve('..', 'backend', '.venv', 'bin', 'python');
+
+const pythonBin = fs.existsSync(venvPy) ? `"${venvPy}"` : (isWin ? 'python' : 'python3');
 
 export default defineConfig({
   testDir: './e2e',
@@ -15,7 +24,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: '..\\backend\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir ../backend --host 127.0.0.1 --port 8000',
+      command: `${pythonBin} -m uvicorn app.main:app --app-dir ../backend --host 127.0.0.1 --port 8000`,
       url: 'http://127.0.0.1:8000/api/v1/health',
       reuseExistingServer: true,
       timeout: 60_000,
