@@ -217,8 +217,8 @@ test.describe('Docera PDF Editor Comprehensive Regression Suite', () => {
     // Click Apply text change
     await page.getByRole('button', { name: 'Apply text change' }).click();
 
-    // Verify visual replacement badge appears
-    await expect(page.locator('.existing-text-replacement')).toContainText('Updated Block 2026');
+    // Verify edited span is updated on canvas
+    await expect(page.locator('.existing-text-span.edited')).toBeVisible();
 
     // Export PDF and verify binary
     const [dl] = await Promise.all([

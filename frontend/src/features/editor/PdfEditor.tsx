@@ -25,7 +25,6 @@ import {
   detectLegacyKhmerArtifacts,
   repairLegacyKhmerArtifacts,
 } from '../../services/khmerNormalizer';
-import { ComplexScriptInlineEditor } from './ComplexScriptInlineEditor';
 import { triggerDownload } from '../organize/pdfOrganize';
 import { exportEditedPdf } from './editorExport';
 import {
@@ -91,7 +90,6 @@ export default function PdfEditor() {
   const [loadingSpansPages, setLoadingSpansPages] = useState<Record<number, boolean>>({});
   const [selectedSpan, setSelectedSpan] = useState<NativeTextSpan | null>(null);
   const [hoveredSpanId, setHoveredSpanId] = useState<string | null>(null);
-  const [editingSpanId, setEditingSpanId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [editingFont, setEditingFont] = useState('');
   const [editingFontSize, setEditingFontSize] = useState<number>(12);
@@ -99,6 +97,7 @@ export default function PdfEditor() {
   const [nativeEdits, setNativeEdits] = useState<Record<string, NativeTextEdit>>({});
   const [nativeEditsPast, setNativeEditsPast] = useState<Record<string, NativeTextEdit>[]>([]);
   const [nativeEditsFuture, setNativeEditsFuture] = useState<Record<string, NativeTextEdit>[]>([]);
+  const replacementInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Drag / Ink state with 4-corner handle support
   const [dragState, setDragState] = useState<{
@@ -272,14 +271,13 @@ export default function PdfEditor() {
       if (e.key === 'Escape') {
         setSelectedIds(new Set());
         setSelectedSpan(null);
-        setEditingSpanId(null);
         setTool('select');
         return;
       }
 
-      if (e.key === 'Enter' && selectedSpan && !editingSpanId) {
+      if (e.key === 'Enter' && selectedSpan) {
         e.preventDefault();
-        setEditingSpanId(selectedSpan.id);
+        replacementInputRef.current?.focus();
         return;
       }
 
@@ -546,7 +544,6 @@ export default function PdfEditor() {
   }
 
   function commitSpanEdit(span: NativeTextSpan, newText: string, extra?: { font_name?: string; font_size?: number; color?: string }) {
-    setEditingSpanId(null);
     const resolvedDefaultFont = resolveEditorFontFamily(span.font, newText);
     const rawFont = extra?.font_name || editingFont || span.font;
     const fontName = cleanPdfFontName(rawFont) || resolvedDefaultFont;
@@ -996,14 +993,9 @@ export default function PdfEditor() {
                           const edit = nativeEdits[span.id];
                           const isHovered = hoveredSpanId === span.id;
                           const isSelected = selectedSpan?.id === span.id;
-                          const isEditing = editingSpanId === span.id;
                           const displayText = edit ? edit.new_text : span.text;
-                          const displayColor = edit?.color || span.color;
-                          const displaySize = (edit?.font_size || span.font_size) * scale;
                           const rawFont = edit?.font_name || span.font;
-                          const resolvedFont = resolveEditorFontFamily(rawFont, edit ? edit.new_text : span.text);
-                          const displayFont = `'${resolvedFont}', sans-serif`;
-                          const isPreviewApplied = Boolean(previewPdf && edit);
+                          const resolvedFont = resolveEditorFontFamily(rawFont, displayText);
 
                           const spanStyle: React.CSSProperties = {
                             position: 'absolute',
@@ -1011,38 +1003,15 @@ export default function PdfEditor() {
                             top: span.bbox[1] * scale,
                             width: Math.max(16, (span.bbox[2] - span.bbox[0]) * scale),
                             height: Math.max(14, (span.bbox[3] - span.bbox[1]) * scale),
-                            zIndex: isEditing ? 35 : isSelected ? 25 : isHovered ? 20 : 12,
+                            zIndex: isSelected ? 25 : isHovered ? 20 : 12,
                           };
-
-                          if (isEditing) {
-                            return (
-                              <ComplexScriptInlineEditor
-                                key={span.id}
-                                span={span}
-                                scale={scale}
-                                initialText={editingText}
-                                fontFamily={resolvedFont}
-                                fontSize={editingFontSize || span.font_size}
-                                color={displayColor}
-                                pageWidth={info.width}
-                                onCommit={newText => {
-                                  setEditingSpanId(null);
-                                  commitSpanEdit(span, newText, { font_name: resolvedFont, font_size: editingFontSize, color: editingColor });
-                                }}
-                                onCancel={() => setEditingSpanId(null)}
-                                onTextChange={newText => {
-                                  setEditingText(newText);
-                                }}
-                              />
-                            );
-                          }
 
                           return (
                             <div
                               key={span.id}
-                              className={`existing-text-span ${isSelected ? 'selected' : ''} ${edit ? 'edited' : ''} ${isPreviewApplied ? 'preview-synced' : ''}`}
+                              className={`existing-text-span ${isSelected ? 'selected' : ''} ${edit ? 'edited' : ''}`}
                               style={spanStyle}
-                              title={`Click to select, double-click or Enter to edit: "${displayText}"`}
+                              title={`Click to edit in Properties panel: "${displayText}"`}
                               onPointerEnter={() => setHoveredSpanId(span.id)}
                               onPointerLeave={() => setHoveredSpanId(null)}
                               onClick={e => {
@@ -1052,30 +1021,18 @@ export default function PdfEditor() {
                                 setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
                                 setEditingColor(edit?.color || span.color);
+                                setTimeout(() => replacementInputRef.current?.focus(), 30);
                               }}
                               onDoubleClick={e => {
                                 e.stopPropagation();
                                 setSelectedSpan(span);
-                                setEditingSpanId(span.id);
                                 setEditingText(edit ? edit.new_text : span.text);
                                 setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
                                 setEditingColor(edit?.color || span.color);
+                                setTimeout(() => replacementInputRef.current?.focus(), 30);
                               }}
-                            >
-                              {edit && (
-                                <div
-                                  className="existing-text-replacement"
-                                  style={{
-                                    color: displayColor,
-                                    fontSize: displaySize,
-                                    fontFamily: displayFont,
-                                  }}
-                                >
-                                  {edit.new_text}
-                                </div>
-                              )}
-                            </div>
+                            />
                           );
                         })}
                         {pageObjs.map(obj => {
@@ -1281,6 +1238,7 @@ export default function PdfEditor() {
                   <div className="prop-row" style={{ marginTop: 8 }}>
                     <span className="prop-label">Replacement text</span>
                     <textarea
+                      ref={replacementInputRef}
                       rows={3}
                       aria-label="Replacement text"
                       value={editingText}
@@ -1291,7 +1249,16 @@ export default function PdfEditor() {
                           commitSpanEdit(selectedSpan, editingText, { font_name: editingFont, font_size: editingFontSize, color: editingColor });
                         }
                       }}
-                      style={{ width: '100%', boxSizing: 'border-box', font: 'inherit', fontSize: 13, padding: 6, borderRadius: 4, border: '1px solid var(--border)' }}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        fontFamily: `'${resolveEditorFontFamily(editingFont, editingText)}', sans-serif`,
+                        fontSize: 13,
+                        lineHeight: 1.6,
+                        padding: '6px 8px',
+                        borderRadius: 4,
+                        border: '1px solid var(--border)',
+                      }}
                     />
                     {detectLegacyKhmerArtifacts(editingText) && (
                       <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
