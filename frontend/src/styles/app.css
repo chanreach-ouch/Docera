@@ -2613,16 +2613,29 @@ textarea {
   font-weight: 600;
 }
 
-/* Direct In-Document Text Editor */
+/* Direct In-Document Text Editor - Single-line on-canvas input */
+.direct-page-inline-input {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 2px;
+  background-color: #ffffff;
+  border: 1px solid var(--forest, #23665a);
+  border-radius: 2px;
+  box-shadow: none;
+  outline: none;
+  caret-color: var(--forest, #23665a);
+  letter-spacing: normal;
+  transition: border-color 0.1s ease;
+}
+
 .direct-page-text-editor-container {
   position: absolute;
   box-sizing: border-box;
   z-index: 60;
   background-color: #ffffff;
-  border: 1.5px solid var(--forest, #23665a);
-  border-radius: 3px;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18), 0 0 0 2px rgba(35, 102, 90, 0.15);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  border: 1px solid var(--forest, #23665a);
+  border-radius: 2px;
+  box-shadow: none;
 }
 
 .direct-page-textarea {
@@ -2630,16 +2643,14 @@ textarea {
   height: 100%;
   box-sizing: border-box;
   margin: 0;
-  padding: 2px 4px;
+  padding: 0 2px;
   border: none;
   outline: none;
   background: transparent;
   resize: none;
   overflow: hidden;
-  line-height: 1.5;
+  line-height: normal;
   caret-color: var(--forest, #23665a);
-  white-space: pre-wrap;
-  word-break: break-word;
   letter-spacing: normal;
 }
 

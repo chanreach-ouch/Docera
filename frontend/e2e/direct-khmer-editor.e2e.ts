@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'fs/promises';
 import path from 'path';
 
-test('Direct on-page PDF editing: benchmark iLovePDF, in-document caret, Khmer OS Muol and Battambang fidelity, and clean export', async ({ page }) => {
+test('Direct on-page PDF editing: single-click inline caret, Khmer OS Muol and Battambang fidelity, zero-occlusion, and clean export', async ({ page }) => {
   const khmerFixturePath = path.resolve('..', 'backend', 'tests', 'fixtures', 'khmer_document.pdf');
   const khmerPdfBuf = await readFile(khmerFixturePath);
 
@@ -31,9 +31,13 @@ test('Direct on-page PDF editing: benchmark iLovePDF, in-document caret, Khmer O
   await page.screenshot({ path: 'C:/Users/Chanreach/.gemini/antigravity/brain/c9cb076e-b4d0-4dbd-8aad-1fe0e77fdeaf/direct_01_before_editing.png' });
 
   // 5. Single-click the first span (Khmer OS Muol Heading: "កម្រងសំណួរ")
+  // User Requirement: "just click on it and then the show the cursor to write text continue from the text"
   const headingSpan = p1Spans.first();
   await headingSpan.click();
-  await expect(headingSpan).toHaveClass(/selected/);
+
+  const directInput = page.locator('.direct-page-inline-input');
+  await expect(directInput).toBeVisible();
+  await expect(directInput).toBeFocused();
 
   // Verify contextual text formatting toolbar appears at top with detected font
   const contextualToolbar = page.locator('.contextual-text-toolbar');
@@ -41,52 +45,44 @@ test('Direct on-page PDF editing: benchmark iLovePDF, in-document caret, Khmer O
   const fontSelect = page.locator('.contextual-font-select');
   await expect(fontSelect).toBeVisible();
 
-  // 6. Double-click to activate direct in-document on-page editing
-  await headingSpan.dblclick();
-
-  const directContainer = page.locator('.direct-page-text-editor-container');
-  await expect(directContainer).toBeVisible();
-  const directTextarea = page.locator('.direct-page-textarea');
-  await expect(directTextarea).toBeVisible();
-  await expect(directTextarea).toBeFocused();
-
   // Verify direct editor typography and properties
-  const textareaStyles = await directTextarea.evaluate((el) => {
+  const inputStyles = await directInput.evaluate((el) => {
     const cs = window.getComputedStyle(el);
     return {
       fontFamily: cs.fontFamily,
       fontSize: parseFloat(cs.fontSize),
-      lineHeight: parseFloat(cs.lineHeight),
+      height: parseFloat(cs.height),
       color: cs.color,
       backgroundColor: cs.backgroundColor,
     };
   });
-  console.log('Direct on-page textarea styles:', textareaStyles);
-  expect(textareaStyles.fontFamily).toContain('KhmerOS');
-  expect(textareaStyles.lineHeight).toBeGreaterThan(16);
+  console.log('Direct on-page inline input styles:', inputStyles);
+  expect(inputStyles.fontFamily).toContain('KhmerOS');
+  expect(inputStyles.height).toBeGreaterThan(10);
+  expect(inputStyles.height).toBeLessThan(40); // Ensures it's single line, never expanding downward!
 
-  // Capture active direct editing screenshot
+  // Capture active direct editing screenshot showing blinking caret right on the text line
   await page.screenshot({ path: 'C:/Users/Chanreach/.gemini/antigravity/brain/c9cb076e-b4d0-4dbd-8aad-1fe0e77fdeaf/direct_02_muol_active_caret.png' });
 
-  // 7. Type directly into the document
-  await directTextarea.fill('កម្រងសំណួរ ២០២៦ (កែប្រែផ្ទាល់)');
+  // 6. Type directly into the document
+  await directInput.fill('កម្រងសំណួរ ២០២៦ (កែប្រែផ្ទាល់)');
   await page.waitForTimeout(200);
 
   // Capture typed on-page screenshot
   await page.screenshot({ path: 'C:/Users/Chanreach/.gemini/antigravity/brain/c9cb076e-b4d0-4dbd-8aad-1fe0e77fdeaf/direct_03_muol_typed_in_document.png' });
 
-  // 8. Press Enter to commit edit directly on page
-  await directTextarea.press('Enter');
+  // 7. Press Enter to commit edit directly on page
+  await directInput.press('Enter');
 
   // Verify editor unmounts and span is marked edited
-  await expect(directContainer).toHaveCount(0);
+  await expect(directInput).toHaveCount(0);
   await expect(headingSpan).toHaveClass(/edited/);
 
   // Wait for debounced live authoritative preview to update
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'C:/Users/Chanreach/.gemini/antigravity/brain/c9cb076e-b4d0-4dbd-8aad-1fe0e77fdeaf/direct_04_muol_committed_preview.png' });
 
-  // 9. Navigate to Page 2
+  // 8. Navigate to Page 2
   const thumb2 = page.locator('.thumbnail-button').nth(1);
   await thumb2.click();
   await page.waitForTimeout(500);
@@ -109,25 +105,25 @@ test('Direct on-page PDF editing: benchmark iLovePDF, in-document caret, Khmer O
   if (targetSpan) {
     await targetSpan.scrollIntoViewIfNeeded();
 
-    // Direct edit via Enter key while selected
+    // Single-click target span directly opens inline input
     await targetSpan.click();
-    await expect(targetSpan).toHaveClass(/selected/);
-    await page.keyboard.press('Enter');
+    await expect(directInput).toBeVisible();
+    await expect(directInput).toBeFocused();
 
-    await expect(directContainer).toBeVisible();
-    await directTextarea.fill('២០២៥ ?');
+    // Type text continuing from original text
+    await directInput.fill('២០២៥ ?');
     await page.waitForTimeout(200);
 
     // Commit by clicking outside (blur)
     await page.locator('.document-scroll').click({ position: { x: 50, y: 50 } });
-    await expect(directContainer).toHaveCount(0);
+    await expect(directInput).toHaveCount(0);
     await expect(targetSpan).toHaveClass(/edited/);
 
     await page.waitForTimeout(400);
     await page.screenshot({ path: 'C:/Users/Chanreach/.gemini/antigravity/brain/c9cb076e-b4d0-4dbd-8aad-1fe0e77fdeaf/direct_05_page2_battambang_committed.png' });
   }
 
-  // 10. Export PDF and verify binary
+  // 9. Export PDF and verify binary
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('button', { name: /export pdf/i }).click(),

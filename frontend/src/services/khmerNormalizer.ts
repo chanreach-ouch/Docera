@@ -87,6 +87,13 @@ export function normalizeKhmerUnicode(text: string): string {
 
   let norm = text.normalize('NFC');
 
+  // Strip errant whitespace before combining vowel marks or diacritics (e.g. 'សុ ី' -> 'ស៊ី')
+  norm = norm.replace(/\s+([\u17B6-\u17D3])/g, '$1');
+
+  // Fix accidental double/misplaced vowel combinations: u (U+17BB) + ii (U+17B8) -> ii (U+17B8)
+  norm = norm.replace(/\u17BB\u17B8/g, '\u17B8');
+  norm = norm.replace(/\u17B8\u17BB/g, '\u17B8');
+
   // De-duplicate coengs: ្ + ្ -> ្
   norm = norm.replace(/\u17D2{2,}/g, '\u17D2');
 

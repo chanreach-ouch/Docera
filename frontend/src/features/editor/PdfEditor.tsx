@@ -23,6 +23,7 @@ import {
 } from '../../services/fontResolver';
 import {
   detectLegacyKhmerArtifacts,
+  normalizeKhmerUnicode,
   repairLegacyKhmerArtifacts,
 } from '../../services/khmerNormalizer';
 import { triggerDownload } from '../organize/pdfOrganize';
@@ -1253,7 +1254,7 @@ export default function PdfEditor() {
                                 key={span.id}
                                 span={span}
                                 scale={scale}
-                                initialText={displayText}
+                                initialText={normalizeKhmerUnicode(displayText)}
                                 fontFamily={resolvedFont}
                                 fontSize={editingFontSize || span.font_size}
                                 color={editingColor || span.color}
@@ -1282,22 +1283,24 @@ export default function PdfEditor() {
                               tabIndex={0}
                               role="button"
                               aria-label={`Existing text: ${displayText}`}
-                              title={`Click to select, double-click or Enter to edit directly on page: "${displayText}"`}
+                              title={`Click to edit directly on page: "${displayText}"`}
                               onPointerEnter={() => setHoveredSpanId(span.id)}
                               onPointerLeave={() => setHoveredSpanId(null)}
                               onClick={e => {
                                 e.stopPropagation();
-                                e.currentTarget.focus();
                                 setSelectedSpan(span);
-                                setEditingText(edit ? edit.new_text : span.text);
+                                const initial = edit ? edit.new_text : normalizeKhmerUnicode(span.text);
+                                setEditingText(initial);
                                 setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
                                 setEditingColor(edit?.color || span.color);
+                                setEditingSpanId(span.id);
                               }}
                               onDoubleClick={e => {
                                 e.stopPropagation();
                                 setSelectedSpan(span);
-                                setEditingText(edit ? edit.new_text : span.text);
+                                const initial = edit ? edit.new_text : normalizeKhmerUnicode(span.text);
+                                setEditingText(initial);
                                 setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
                                 setEditingColor(edit?.color || span.color);
