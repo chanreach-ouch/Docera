@@ -29,6 +29,51 @@ export const REGISTERED_FONTS: Record<string, FontDefinition> = {
     url: '/fonts/KhmerOSmuol.ttf',
     isKhmer: true,
   },
+  KhmerOSMuolLight: {
+    family: 'KhmerOSMuolLight',
+    url: '/fonts/KhmerOSmuollight.ttf',
+    isKhmer: true,
+  },
+  KhmerOSMuolPali: {
+    family: 'KhmerOSMuolPali',
+    url: '/fonts/KhmerOSmuolpali.ttf',
+    isKhmer: true,
+  },
+  KhmerOSSiemreap: {
+    family: 'KhmerOSSiemreap',
+    url: '/fonts/KhmerOSsiemreap.ttf',
+    isKhmer: true,
+  },
+  KhmerOSBokor: {
+    family: 'KhmerOSBokor',
+    url: '/fonts/KhmerOSbokor.ttf',
+    isKhmer: true,
+  },
+  KhmerOSContent: {
+    family: 'KhmerOSContent',
+    url: '/fonts/KhmerOScontent.ttf',
+    isKhmer: true,
+  },
+  KhmerOSFasthand: {
+    family: 'KhmerOSFasthand',
+    url: '/fonts/KhmerOSfasthand.ttf',
+    isKhmer: true,
+  },
+  KhmerOSFreehand: {
+    family: 'KhmerOSFreehand',
+    url: '/fonts/KhmerOSfreehand.ttf',
+    isKhmer: true,
+  },
+  KhmerOSMetalChrieng: {
+    family: 'KhmerOSMetalChrieng',
+    url: '/fonts/KhmerOSmetalchrieng.ttf',
+    isKhmer: true,
+  },
+  KhmerOSSys: {
+    family: 'KhmerOSSys',
+    url: '/fonts/KhmerOSsys.ttf',
+    isKhmer: true,
+  },
   'Noto Sans Khmer': {
     family: 'Noto Sans Khmer',
     url: '/fonts/NotoSansKhmer-Regular.ttf',
@@ -70,13 +115,40 @@ export function resolveEditorFontFamily(fontName: string | null | undefined, tex
   const cleanName = cleanPdfFontName(fontName).toLowerCase().replace(/[\s\-_]+/g, '');
 
   if (isKhmer || cleanName.includes('khmer') || cleanName.includes('battambang') || cleanName.includes('muol') || cleanName.includes('moul')) {
+    if (cleanName.includes('muollight')) {
+      return 'KhmerOSMuolLight';
+    }
+    if (cleanName.includes('muolpali')) {
+      return 'KhmerOSMuolPali';
+    }
     if (cleanName.includes('muol') || cleanName.includes('moul')) {
       return 'KhmerOSMuol';
     }
-    if (cleanName.includes('notoserif') || cleanName.includes('serif')) {
+    if (cleanName.includes('siemreap')) {
+      return 'KhmerOSSiemreap';
+    }
+    if (cleanName.includes('bokor')) {
+      return 'KhmerOSBokor';
+    }
+    if (cleanName.includes('content')) {
+      return 'KhmerOSContent';
+    }
+    if (cleanName.includes('fasthand')) {
+      return 'KhmerOSFasthand';
+    }
+    if (cleanName.includes('freehand')) {
+      return 'KhmerOSFreehand';
+    }
+    if (cleanName.includes('metalchrieng')) {
+      return 'KhmerOSMetalChrieng';
+    }
+    if (cleanName.includes('sys')) {
+      return 'KhmerOSSys';
+    }
+    if (cleanName.includes('notoserif') || cleanName.includes('serifkhmer')) {
       return 'Noto Serif Khmer';
     }
-    if (cleanName.includes('noto')) {
+    if (cleanName.includes('notosans') || cleanName.includes('noto') || cleanName.includes('kantumruy')) {
       return 'Noto Sans Khmer';
     }
     if (cleanName.includes('khmeros') && !cleanName.includes('battambang')) {
@@ -106,20 +178,17 @@ export async function ensureFontLoaded(family: string): Promise<boolean> {
 
   const fontDef = REGISTERED_FONTS[family];
   if (!fontDef) {
-    // If standard or system font, just await document.fonts.ready
     await document.fonts.ready;
     return true;
   }
 
   try {
-    // Check if font already exists in document.fonts
     const isLoaded = document.fonts.check(`12px "${family}"`);
     if (isLoaded) {
       loadedFontsCache.add(family);
       return true;
     }
 
-    // Construct FontFace and load eagerly
     const fontFace = new FontFace(family, `url(${fontDef.url})`, {
       style: fontDef.style || 'normal',
       weight: fontDef.weight || 'normal',

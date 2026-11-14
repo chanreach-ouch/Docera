@@ -3,7 +3,7 @@ import {
   AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowUp, ArrowUpRight,
   Circle, Copy, Download, Highlighter, Image as ImageIcon, Minus,
   MousePointer2, Move, PenTool, Plus, Redo2, Save, Search,
-  Signature, Square, Stamp, StickyNote, Strikethrough, Trash2, Type,
+  Signature, Sparkles, Square, Stamp, StickyNote, Strikethrough, Trash2, Type,
   Underline, Undo2, Wrench, X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -21,6 +21,11 @@ import {
   preloadAllKhmerFonts,
   resolveEditorFontFamily,
 } from '../../services/fontResolver';
+import {
+  detectLegacyKhmerArtifacts,
+  repairLegacyKhmerArtifacts,
+} from '../../services/khmerNormalizer';
+import { ComplexScriptInlineEditor } from './ComplexScriptInlineEditor';
 import { triggerDownload } from '../organize/pdfOrganize';
 import { exportEditedPdf } from './editorExport';
 import {
@@ -91,7 +96,6 @@ export default function PdfEditor() {
   const [editingFont, setEditingFont] = useState('');
   const [editingFontSize, setEditingFontSize] = useState<number>(12);
   const [editingColor, setEditingColor] = useState('#1c302e');
-  const [isComposing, setIsComposing] = useState(false);
   const [nativeEdits, setNativeEdits] = useState<Record<string, NativeTextEdit>>({});
   const [nativeEditsPast, setNativeEditsPast] = useState<Record<string, NativeTextEdit>[]>([]);
   const [nativeEditsFuture, setNativeEditsFuture] = useState<Record<string, NativeTextEdit>[]>([]);
@@ -1012,35 +1016,24 @@ export default function PdfEditor() {
 
                           if (isEditing) {
                             return (
-                              <div key={span.id} style={spanStyle} onClick={e => e.stopPropagation()}>
-                                <input
-                                  className="existing-text-inline-input"
-                                  autoFocus
-                                  value={editingText}
-                                  onChange={e => setEditingText(e.target.value)}
-                                  onCompositionStart={() => setIsComposing(true)}
-                                  onCompositionEnd={() => setIsComposing(false)}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter' && !isComposing) {
-                                      e.preventDefault();
-                                      commitSpanEdit(span, editingText);
-                                    } else if (e.key === 'Escape') {
-                                      e.preventDefault();
-                                      setEditingSpanId(null);
-                                    }
-                                  }}
-                                  onBlur={() => {
-                                    if (!isComposing) {
-                                      commitSpanEdit(span, editingText);
-                                    }
-                                  }}
-                                  style={{
-                                    fontSize: displaySize,
-                                    color: displayColor,
-                                    fontFamily: displayFont,
-                                  }}
-                                />
-                              </div>
+                              <ComplexScriptInlineEditor
+                                key={span.id}
+                                span={span}
+                                scale={scale}
+                                initialText={editingText}
+                                fontFamily={resolvedFont}
+                                fontSize={editingFontSize || span.font_size}
+                                color={displayColor}
+                                pageWidth={info.width}
+                                onCommit={newText => {
+                                  setEditingSpanId(null);
+                                  commitSpanEdit(span, newText, { font_name: resolvedFont, font_size: editingFontSize, color: editingColor });
+                                }}
+                                onCancel={() => setEditingSpanId(null)}
+                                onTextChange={newText => {
+                                  setEditingText(newText);
+                                }}
+                              />
                             );
                           }
 
@@ -1300,6 +1293,19 @@ export default function PdfEditor() {
                       }}
                       style={{ width: '100%', boxSizing: 'border-box', font: 'inherit', fontSize: 13, padding: 6, borderRadius: 4, border: '1px solid var(--border)' }}
                     />
+                    {detectLegacyKhmerArtifacts(editingText) && (
+                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="button quiet small"
+                          style={{ color: '#b45309', background: '#fef3c7', borderColor: '#fde68a' }}
+                          title="Repairs Limon/ABC visual keyboard typing artifacts into clean standard Unicode Khmer."
+                          onClick={() => setEditingText(repairLegacyKhmerArtifacts(editingText))}
+                        >
+                          <Sparkles size={12} /> Clean Legacy Khmer Unicode
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div className="prop-row">
@@ -1310,6 +1316,15 @@ export default function PdfEditor() {
                         <option value="KhmerOSBattambang">KhmerOS Battambang</option>
                         <option value="KhmerOS">KhmerOS (Regular)</option>
                         <option value="KhmerOSMuol">KhmerOS Muol (Heading)</option>
+                        <option value="KhmerOSMuolLight">KhmerOS Muol Light</option>
+                        <option value="KhmerOSMuolPali">KhmerOS Muol Pali</option>
+                        <option value="KhmerOSSiemreap">KhmerOS Siemreap</option>
+                        <option value="KhmerOSBokor">KhmerOS Bokor</option>
+                        <option value="KhmerOSContent">KhmerOS Content</option>
+                        <option value="KhmerOSFasthand">KhmerOS Fasthand</option>
+                        <option value="KhmerOSFreehand">KhmerOS Freehand</option>
+                        <option value="KhmerOSMetalChrieng">KhmerOS Metal Chrieng</option>
+                        <option value="KhmerOSSys">KhmerOS Sys</option>
                         <option value="Noto Sans Khmer">Noto Sans Khmer</option>
                         <option value="Noto Serif Khmer">Noto Serif Khmer</option>
                       </optgroup>

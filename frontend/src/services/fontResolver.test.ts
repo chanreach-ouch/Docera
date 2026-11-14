@@ -30,6 +30,12 @@ describe('Font Resolver Service', () => {
     expect(resolveEditorFontFamily('NotoSansKhmer', '')).toBe('Noto Sans Khmer');
     expect(resolveEditorFontFamily('NotoSerifKhmer', '')).toBe('Noto Serif Khmer');
     expect(resolveEditorFontFamily('KhmerOS', '')).toBe('KhmerOS');
+    expect(resolveEditorFontFamily('KhmerOSSiemreap', '')).toBe('KhmerOSSiemreap');
+    expect(resolveEditorFontFamily('KhmerOSBokor', '')).toBe('KhmerOSBokor');
+    expect(resolveEditorFontFamily('KhmerOSContent', '')).toBe('KhmerOSContent');
+    expect(resolveEditorFontFamily('KhmerOSFasthand', '')).toBe('KhmerOSFasthand');
+    expect(resolveEditorFontFamily('KhmerOSFreehand', '')).toBe('KhmerOSFreehand');
+    expect(resolveEditorFontFamily('KhmerOSMetalChrieng', '')).toBe('KhmerOSMetalChrieng');
 
     // Default Khmer font when script is Khmer
     expect(resolveEditorFontFamily('UnknownFont', '២០២៥')).toBe('KhmerOSBattambang');

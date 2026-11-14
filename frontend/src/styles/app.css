@@ -2441,6 +2441,78 @@ textarea {
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'KhmerOSSiemreap';
+  src: url('/fonts/KhmerOSsiemreap.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KhmerOSMuolLight';
+  src: url('/fonts/KhmerOSmuollight.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KhmerOSMuolPali';
+  src: url('/fonts/KhmerOSmuolpali.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KhmerOSBokor';
+  src: url('/fonts/KhmerOSbokor.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KhmerOSContent';
+  src: url('/fonts/KhmerOScontent.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KhmerOSFasthand';
+  src: url('/fonts/KhmerOSfasthand.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KhmerOSFreehand';
+  src: url('/fonts/KhmerOSfreehand.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KhmerOSMetalChrieng';
+  src: url('/fonts/KhmerOSmetalchrieng.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'KhmerOSSys';
+  src: url('/fonts/KhmerOSsys.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 .existing-text-span {
   position: absolute;
   box-sizing: border-box;
@@ -2535,6 +2607,127 @@ textarea {
   font-size: inherit;
   color: inherit;
   box-sizing: border-box;
+}
+
+/* Dedicated Complex-Script Inline Editor */
+.complex-script-inline-wrapper {
+  box-sizing: border-box;
+}
+
+.inline-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(28, 48, 46, 0.94);
+  backdrop-filter: blur(8px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  width: max-content;
+  max-width: 100%;
+}
+
+.inline-editor-font-pill {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.inline-clean-khmer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fef08a;
+  background: rgba(234, 179, 8, 0.2);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inline-clean-khmer-btn:hover {
+  background: rgba(234, 179, 8, 0.35);
+  color: #ffffff;
+}
+
+.inline-overflow-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fed7aa;
+  background: rgba(249, 115, 22, 0.2);
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.inline-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.inline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inline-btn-apply {
+  background: var(--forest);
+  color: #ffffff;
+}
+
+.inline-btn-apply:hover {
+  background: #1c5248;
+}
+
+.inline-btn-cancel {
+  background: rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+}
+
+.inline-btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.complex-script-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 2px solid var(--forest);
+  border-radius: 4px;
+  background: #ffffff;
+  padding: 4px 8px;
+  margin: 0;
+  outline: none;
+  box-shadow: 0 4px 16px rgba(35, 102, 90, 0.25), 0 1px 3px rgba(0, 0, 0, 0.08);
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-variant-ligatures: normal;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 .overflow-indicator {
