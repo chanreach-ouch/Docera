@@ -336,10 +336,14 @@ def apply_native_text_edits(pdf_bytes: bytes, edits: list[dict]) -> bytes:
             else:
                 # Standard Latin text insertion
                 std_font = font_to_standard(font_name, flags)
-                try:
-                    page.insert_text(origin, new_text, fontsize=font_size, fontname=std_font, color=rgb_color)
-                except Exception:
-                    page.insert_text(origin, new_text, fontsize=font_size, fontname="helv", color=rgb_color)
+                lines = new_text.split("\n")
+                line_height = font_size * 1.25
+                for l_i, l_t in enumerate(lines):
+                    l_origin = (origin[0], origin[1] + l_i * line_height)
+                    try:
+                        page.insert_text(l_origin, l_t, fontsize=font_size, fontname=std_font, color=rgb_color)
+                    except Exception:
+                        page.insert_text(l_origin, l_t, fontsize=font_size, fontname="helv", color=rgb_color)
 
     intermediate_pdf = doc.tobytes(garbage=3, deflate=True)
 
@@ -367,29 +371,40 @@ def apply_native_text_edits(pdf_bytes: bytes, edits: list[dict]) -> bytes:
                 color_hex = str(e.get("color", "#000000"))
                 r, g, b = hex_to_rgb(color_hex)
 
-                layout = shape_text_layout(
-                    text=new_text,
-                    font_name=e.get("font_name") or e.get("font"),
-                    font_size=font_size,
-                )
+                lines = new_text.split("\n")
+                all_line_glyphs = []
+                line_layouts = []
+                for line_str in lines:
+                    ll = shape_text_layout(
+                        text=line_str,
+                        font_name=e.get("font_name") or e.get("font"),
+                        font_size=font_size,
+                    )
+                    line_layouts.append(ll)
+                    all_line_glyphs.extend(ll.glyphs)
 
-                # Inject custom ToUnicode CMap into the page's font dictionary
+                # Inject custom ToUnicode CMap into the page's font dictionary covering all lines
+                from app.services.pdf.layout_engine import build_tounicode_cmap
+                cmap_str = build_tounicode_cmap(font_path, all_line_glyphs, new_text)
+
                 font_key = f"/{alias}"
                 if "/Resources" in pg and "/Font" in pg["/Resources"] and font_key in pg["/Resources"]["/Font"]:
                     font_obj = pg["/Resources"]["/Font"][font_key]
-                    font_obj["/ToUnicode"] = pdf.make_stream(layout.tounicode_cmap.encode("latin1"))
+                    font_obj["/ToUnicode"] = pdf.make_stream(cmap_str.encode("latin1"))
 
-                cur_x = float(origin[0])
-                cur_y = page_height - float(origin[1])
+                line_height = font_size * 1.35
+                for l_idx, ll in enumerate(line_layouts):
+                    cur_x = float(origin[0])
+                    cur_y = (page_height - float(origin[1])) - (l_idx * line_height)
 
-                stream_parts.append(f"q\n{r:.3f} {g:.3f} {b:.3f} rg\nBT\n/{alias} {font_size:.2f} Tf\n")
-                for g_info in layout.glyphs:
-                    gx = cur_x + g_info.x_offset
-                    gy = cur_y + g_info.y_offset
-                    stream_parts.append(f"1 0 0 1 {gx:.2f} {gy:.2f} Tm <{g_info.gid:04X}> Tj\n")
-                    cur_x += g_info.x_advance
-                    cur_y += g_info.y_advance
-                stream_parts.append("ET\nQ\n")
+                    stream_parts.append(f"q\n{r:.3f} {g:.3f} {b:.3f} rg\nBT\n/{alias} {font_size:.2f} Tf\n")
+                    for g_info in ll.glyphs:
+                        gx = cur_x + g_info.x_offset
+                        gy = cur_y + g_info.y_offset
+                        stream_parts.append(f"1 0 0 1 {gx:.2f} {gy:.2f} Tm <{g_info.gid:04X}> Tj\n")
+                        cur_x += g_info.x_advance
+                        cur_y += g_info.y_advance
+                    stream_parts.append("ET\nQ\n")
 
             if stream_parts:
                 new_stream_bytes = "".join(stream_parts).encode("latin1")

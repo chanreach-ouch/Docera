@@ -158,10 +158,12 @@ export default function PdfEditor() {
           { type: 'application/pdf' },
         );
         const res = await toolsApi.nativeApplyEdits({ file: f }, editsList, controller.signal);
-        const buf = await res.blob.arrayBuffer();
+        const arrayBuf = await res.blob.arrayBuffer();
         if (controller.signal.aborted) return;
 
-        const task = loadPdfFromData(buf);
+        // Clone ArrayBuffer for PDF.js worker so pdfBytes remains valid
+        const pdfBytes = new Uint8Array(arrayBuf);
+        const task = loadPdfFromData(arrayBuf.slice(0));
         const newProxy = await task.promise;
         if (controller.signal.aborted) {
           void newProxy.cleanup().catch(() => undefined);
@@ -174,7 +176,7 @@ export default function PdfEditor() {
           }
           return newProxy;
         });
-        setPreviewBytes(new Uint8Array(buf));
+        setPreviewBytes(pdfBytes);
       } catch (err) {
         if (!controller.signal.aborted) {
           console.warn('Failed to update live preview PDF:', err);
@@ -544,10 +546,12 @@ export default function PdfEditor() {
   }
 
   useEffect(() => {
-    if (tool === 'edit-text' && sourceBytes) {
-      void loadSpansForPage(page);
+    if (tool === 'edit-text' && sourceBytes && data?.pages) {
+      data.pages.forEach(p => {
+        void loadSpansForPage(p.index + 1);
+      });
     }
-  }, [tool, page, !!sourceBytes]);
+  }, [tool, !!sourceBytes, data?.pages]);
 
   function pushNativeEdits(updater: (prev: Record<string, NativeTextEdit>) => Record<string, NativeTextEdit>) {
     setNativeEditsPast(prev => [...prev.slice(-49), nativeEdits]);

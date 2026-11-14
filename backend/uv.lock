@@ -369,6 +369,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "fonttools" },
+    { name = "kfc" },
     { name = "openpyxl" },
     { name = "pdfplumber" },
     { name = "pikepdf" },
@@ -398,6 +399,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=50.0.2" },
     { name = "fastapi", specifier = ">=0.140,<0.141" },
     { name = "fonttools", specifier = ">=4.68.0" },
+    { name = "kfc", specifier = ">=0.2.3" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pdfplumber", specifier = ">=0.11.10" },
     { name = "pikepdf", specifier = ">=10.18.0" },
@@ -602,6 +604,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/01/e1/2069291243c926a2f
 wheels = [
     { url = "https://files.pythonhosted.org/packages/56/43/4ca9e49d27a1fcf6bece6f6aec0ea46bb9112489b93d4b688fb415457bdb/iniconfig-2.3.1-py3-none-any.whl", hash = "sha256:9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7", size = 7552, upload-time = "2026-10-06T22:48:36.959Z" },
 ]
+
+[[package]]
+name = "kfc"
+version = "0.2.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/37/ed4b855881d40c024457e2c4eca27945440fa8a992dce4d28ae5fa10f0fc/kfc-0.2.3.tar.gz", hash = "sha256:b23efad450f1835a9307afd74cdf3f2f2b5e4655c704d9d8622ebfd81bac64df", size = 7846, upload-time = "2020-10-21T09:41:00.281Z" }
 
 [[package]]
 name = "license-expression"
