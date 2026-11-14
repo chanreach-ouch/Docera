@@ -52,4 +52,12 @@ describe('Khmer Unicode Normalizer & Legacy Repair', () => {
     const repaired = repairLegacyKhmerArtifacts(raw);
     expect(repaired).toBe('ផ្នែកទី១៖ ស្វែងយល់អំពីស្ថានភាពទូទៅរបស់ ធនាគា ហ្វឺលីព ភីអិលស៊ី');
   });
+
+  it('repairs the line with multiple dotted circles (cages, coengs, and spaces) from the user complaint', () => {
+    const raw = 'គយើងខ្ញុំសូមគោរព និងសូមដលលងអុំណររុណជាមុនច្ុំគ េះកដីអនុគប្ោេះ កតីសហការលអ និង គពលគវោដ៏មានតនមលររស់';
+    const repaired = repairLegacyKhmerArtifacts(raw);
+    expect(repaired).toBe('យើងខ្ញុំសូមគោរព និងសូមថ្លែងអំណរគុណជាមុនចំពោះក្ដីអនុគ្រោះ ក្ដីសហការល្អ និង ពេលវេលាដ៏មានតម្លៃរបស់');
+    expect(repaired).not.toContain('\u25CC'); // zero dotted circle symbols
+    expect(repaired).not.toMatch(/\u17D2(?=[^\u1780-\u17A2]|$)/); // zero orphan coengs
+  });
 });

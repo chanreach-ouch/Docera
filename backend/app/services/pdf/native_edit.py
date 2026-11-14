@@ -324,6 +324,8 @@ def apply_native_text_edits(pdf_bytes: bytes, edits: list[dict]) -> bytes:
 
             if has_khmer(new_text) or has_khmer(str(e.get("original_text", ""))):
                 has_complex_edits = True
+                new_text = repair_legacy_khmer(new_text)
+                e["new_text"] = new_text
                 font_path, font_family = resolve_khmer_font(font_name)
                 alias = f"DoceraKhmer_{page_num}_{idx}"
                 page.insert_font(fontfile=font_path, fontname=alias)

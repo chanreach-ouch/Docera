@@ -531,7 +531,11 @@ export default function PdfEditor() {
         { type: 'application/pdf' },
       );
       const res = await toolsApi.nativeTextSpans({ file: f }, pageNum);
-      setNativeSpansByPage(prev => ({ ...prev, [pageNum]: res.spans }));
+      const cleanedSpans = (res.spans || []).map(s => ({
+        ...s,
+        text: repairLegacyKhmerArtifacts(s.text),
+      }));
+      setNativeSpansByPage(prev => ({ ...prev, [pageNum]: cleanedSpans }));
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Could not extract page text spans.');
     } finally {
@@ -553,13 +557,14 @@ export default function PdfEditor() {
 
   function commitSpanEdit(span: NativeTextSpan, newText: string, extra?: { font_name?: string; font_size?: number; color?: string }) {
     setEditingSpanId(null);
-    const resolvedDefaultFont = resolveEditorFontFamily(span.font, newText);
+    const cleanedNewText = repairLegacyKhmerArtifacts(newText);
+    const resolvedDefaultFont = resolveEditorFontFamily(span.font, cleanedNewText);
     const rawFont = extra?.font_name || editingFont || span.font;
     const fontName = cleanPdfFontName(rawFont) || resolvedDefaultFont;
     const fontSize = extra?.font_size ?? editingFontSize ?? span.font_size;
     const color = extra?.color || editingColor || span.color;
 
-    if (newText === span.text && fontName === cleanPdfFontName(span.font) && fontSize === span.font_size && color === span.color) {
+    if (cleanedNewText === span.text && fontName === cleanPdfFontName(span.font) && fontSize === span.font_size && color === span.color) {
       if (nativeEdits[span.id]) {
         pushNativeEdits(prev => {
           const next = { ...prev };
@@ -576,7 +581,7 @@ export default function PdfEditor() {
       bbox: span.bbox,
       origin: span.origin,
       original_text: span.text,
-      new_text: newText,
+      new_text: cleanedNewText,
       font_name: fontName,
       font_size: fontSize,
       color,
@@ -1232,7 +1237,7 @@ export default function PdfEditor() {
                           const edit = nativeEdits[span.id];
                           const isHovered = hoveredSpanId === span.id;
                           const isSelected = selectedSpan?.id === span.id;
-                          const displayText = edit ? edit.new_text : span.text;
+                          const displayText = repairLegacyKhmerArtifacts(edit ? edit.new_text : span.text);
                           const rawFont = edit?.font_name || span.font;
                           const resolvedFont = resolveEditorFontFamily(rawFont, displayText);
 
