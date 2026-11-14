@@ -126,4 +126,5 @@ The entire user journey was captured and verified across multi-page complex Khme
 | `1abebc7` | `develop` | `fix(editor): implement authoritative in-memory PDF live preview and font resolver for Khmer WYSIWYG fidelity` |
 | `327fbd1` | `develop` | `fix(editor): implement dedicated complex-script inline editor, 16-font Khmer registry, and legacy Unicode normalizer` |
 | `94fb6f8` | `develop` | `fix(editor): restore properties-panel workflow and eliminate Khmer text double-rendering corruption` |
-| *Pending* | `feature/direct-pdf-editor` | `feat(editor): implement direct in-document PDF editing benchmarking iLovePDF with Khmer-first typography` |
+| `1c99021` | `feature/direct-pdf-editor` | `feat(editor): implement direct in-document PDF editing benchmarking iLovePDF with Khmer-first typography` |
+| `f33ad49` | `feature/direct-pdf-editor` | `fix(editor): implement true single-click direct on-text inline editing with zero occlusion and clean Unicode normalization` |
