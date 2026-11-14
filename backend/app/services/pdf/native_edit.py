@@ -8,6 +8,7 @@ import pymupdf
 import uharfbuzz as hb
 
 from app.core.errors import AppError
+from app.services.pdf.khmer_normalizer import repair_legacy_khmer
 from app.services.pdf.layout_engine import (
     LayoutResult,
     is_khmer_text,
@@ -242,6 +243,8 @@ def extract_text_spans(pdf_bytes: bytes, page_number: int) -> dict:
                 flags = span.get("flags", 0)
                 color_int = span.get("color", 0)
                 is_khmer_span = has_khmer(text) or any(k in font_name.lower() for k in ("khmer", "battambang", "moul", "muol"))
+                if is_khmer_span:
+                    text = repair_legacy_khmer(text)
                 std_font = font_to_standard(font_name, flags)
                 if is_khmer_span and std_font.startswith("helv"):
                     std_font = "KhmerOSBattambang"

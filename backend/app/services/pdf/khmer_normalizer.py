@@ -7,6 +7,24 @@ import unicodedata
 
 LEGACY_REPLACEMENTS = [
     # Specific compound words
+    (re.compile(r"ផ្សែងយល់"), "ស្វែងយល់"),
+    (re.compile(r"ផ្សែង"), "ស្វែង"),
+    (re.compile(r"ហ្ែីលីព"), "ហ្វឺលីព"),
+    (re.compile(r"ហវីលីព"), "ហ្វឺលីព"),
+    (re.compile(r"ហ្ែី"), "ហ្វឺ"),
+    (re.compile(r"\u17D2\u17C2\u17B8"), "\u17D2\u179C\u17BA"),
+    (re.compile(r"\u17D2\u17C2"), "\u17D2\u179C\u17C2"),
+    (re.compile(r"ភី?អិលសុ[ ី]*"), "ភីអិលស៊ី"),
+    (re.compile(r"ភីអិលសុី"), "ភីអិលស៊ី"),
+    (re.compile(r"ធនាោរ"), "ធនាគារ"),
+    (re.compile(r"ប្តូវបាន"), "ត្រូវបាន"),
+    (re.compile(r"ប្តូវ"), "ត្រូវ"),
+    (re.compile(r"រគងកើត"), "បង្កើត"),
+    (re.compile(r"គកើត"), "កើត"),
+    (re.compile(r"គ ើង"), "ឡើង"),
+    (re.compile(r"គឡើង"), "ឡើង"),
+    (re.compile(r"គៅ"), "ទៅ"),
+    (re.compile(r"ឆ្្ុំណា"), "ឆ្នាំណា"),
     (re.compile(r"គប្រើប្បាស់"), "ប្រើប្រាស់"),
     (re.compile(r"គប្រើ"), "ប្រើ"),
     (re.compile(r"ប្បាស់"), "ប្រាស់"),
@@ -60,6 +78,10 @@ def normalize_khmer_unicode(text: str) -> str:
     # Fix accidental double/misplaced vowel combinations: u (U+17BB) + ii (U+17B8) -> ii (U+17B8)
     norm = norm.replace("\u17BB\u17B8", "\u17B8")
     norm = norm.replace("\u17B8\u17BB", "\u17B8")
+
+    # Repair illegal coeng before upper vowels: \u17D2\u17C2\u17B8 (្ែី) -> \u17D2\u179C\u17BA (្វឺ)
+    norm = norm.replace("\u17D2\u17C2\u17B8", "\u17D2\u179C\u17BA")
+    norm = norm.replace("\u17D2\u17C2", "\u17D2\u179C\u17C2")
 
     # De-duplicate coengs
     norm = re.sub(r"\u17D2{2,}", "\u17D2", norm)

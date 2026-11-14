@@ -78,6 +78,30 @@ test('Direct on-page PDF editing: single-click inline caret, Khmer OS Muol and B
   await expect(directInput).toHaveCount(0);
   await expect(headingSpan).toHaveClass(/edited/);
 
+  // 7b. Single-click the "ផ្នែកទី១៖" bank heading span from the user's screenshot
+  const p1Count = await p1Spans.count();
+  let bankHeadingSpan = null;
+  for (let i = 0; i < p1Count; i++) {
+    const title = await p1Spans.nth(i).getAttribute('title');
+    if (title && (title.includes('ផ្នែកទី១') || title.includes('ហ្វឺលីព') || title.includes('ហ្ែីលីព'))) {
+      bankHeadingSpan = p1Spans.nth(i);
+      break;
+    }
+  }
+
+  expect(bankHeadingSpan).not.toBeNull();
+  if (bankHeadingSpan) {
+    await bankHeadingSpan.click();
+    await expect(directInput).toBeVisible();
+    const val = await directInput.inputValue();
+    console.log('Bank heading input value:', val);
+    expect(val).toContain('ស្វែងយល់');
+    expect(val).toContain('ហ្វឺលីព');
+    expect(val).not.toContain('ផ្សែង');
+    await page.screenshot({ path: 'C:/Users/Chanreach/.gemini/antigravity/brain/c9cb076e-b4d0-4dbd-8aad-1fe0e77fdeaf/direct_bank_heading_repaired.png' });
+    await directInput.press('Enter');
+  }
+
   // Wait for debounced live authoritative preview to update
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'C:/Users/Chanreach/.gemini/antigravity/brain/c9cb076e-b4d0-4dbd-8aad-1fe0e77fdeaf/direct_04_muol_committed_preview.png' });

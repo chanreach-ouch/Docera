@@ -13,6 +13,24 @@
  */
 const LEGACY_REPLACEMENTS: [RegExp, string][] = [
   // Specific compound word patterns (checked first)
+  [/ផ្សែងយល់/g, 'ស្វែងយល់'],
+  [/ផ្សែង/g, 'ស្វែង'],
+  [/ហ្ែីលីព/g, 'ហ្វឺលីព'],
+  [/ហវីលីព/g, 'ហ្វឺលីព'],
+  [/ហ្ែី/g, 'ហ្វឺ'],
+  [/\u17D2\u17C2\u17B8/g, '\u17D2\u179C\u17BA'],
+  [/\u17D2\u17C2/g, '\u17D2\u179C\u17C2'],
+  [/ភី?អិលសុ[ ី]*/g, 'ភីអិលស៊ី'],
+  [/ភីអិលសុី/g, 'ភីអិលស៊ី'],
+  [/ធនាោរ/g, 'ធនាគារ'],
+  [/ប្តូវបាន/g, 'ត្រូវបាន'],
+  [/ប្តូវ/g, 'ត្រូវ'],
+  [/រគងកើត/g, 'បង្កើត'],
+  [/គកើត/g, 'កើត'],
+  [/គ ើង/g, 'ឡើង'],
+  [/គឡើង/g, 'ឡើង'],
+  [/គៅ/g, 'ទៅ'],
+  [/ឆ្្ុំណា/g, 'ឆ្នាំណា'],
   [/គប្រើប្បាស់/g, 'ប្រើប្រាស់'],
   [/គប្រើ/g, 'ប្រើ'],
   [/ប្បាស់/g, 'ប្រាស់'],
@@ -93,6 +111,10 @@ export function normalizeKhmerUnicode(text: string): string {
   // Fix accidental double/misplaced vowel combinations: u (U+17BB) + ii (U+17B8) -> ii (U+17B8)
   norm = norm.replace(/\u17BB\u17B8/g, '\u17B8');
   norm = norm.replace(/\u17B8\u17BB/g, '\u17B8');
+
+  // Repair illegal coeng before upper vowels: \u17D2\u17C2\u17B8 (្ែី) -> \u17D2\u179C\u17BA (្វឺ)
+  norm = norm.replace(/\u17D2\u17C2\u17B8/g, '\u17D2\u179C\u17BA');
+  norm = norm.replace(/\u17D2\u17C2/g, '\u17D2\u179C\u17C2');
 
   // De-duplicate coengs: ្ + ្ -> ្
   norm = norm.replace(/\u17D2{2,}/g, '\u17D2');

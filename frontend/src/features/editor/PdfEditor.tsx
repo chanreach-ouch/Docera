@@ -23,7 +23,6 @@ import {
 } from '../../services/fontResolver';
 import {
   detectLegacyKhmerArtifacts,
-  normalizeKhmerUnicode,
   repairLegacyKhmerArtifacts,
 } from '../../services/khmerNormalizer';
 import { triggerDownload } from '../organize/pdfOrganize';
@@ -1254,7 +1253,7 @@ export default function PdfEditor() {
                                 key={span.id}
                                 span={span}
                                 scale={scale}
-                                initialText={normalizeKhmerUnicode(displayText)}
+                                initialText={repairLegacyKhmerArtifacts(displayText)}
                                 fontFamily={resolvedFont}
                                 fontSize={editingFontSize || span.font_size}
                                 color={editingColor || span.color}
@@ -1289,7 +1288,7 @@ export default function PdfEditor() {
                               onClick={e => {
                                 e.stopPropagation();
                                 setSelectedSpan(span);
-                                const initial = edit ? edit.new_text : normalizeKhmerUnicode(span.text);
+                                const initial = edit ? edit.new_text : repairLegacyKhmerArtifacts(span.text);
                                 setEditingText(initial);
                                 setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
@@ -1299,7 +1298,7 @@ export default function PdfEditor() {
                               onDoubleClick={e => {
                                 e.stopPropagation();
                                 setSelectedSpan(span);
-                                const initial = edit ? edit.new_text : normalizeKhmerUnicode(span.text);
+                                const initial = edit ? edit.new_text : repairLegacyKhmerArtifacts(span.text);
                                 setEditingText(initial);
                                 setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
