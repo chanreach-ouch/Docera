@@ -43,6 +43,7 @@ import {
   type ObjectAlignAction,
 } from './editorModel';
 import { SignaturePadModal } from './SignaturePadModal';
+import { DirectPageTextEditor } from './DirectPageTextEditor';
 
 type ToolMode = 'select' | 'edit-text' | 'text' | 'rect' | 'circle' | 'line' | 'arrow' | 'ink' | 'highlight' | 'underline' | 'strikeout' | 'note' | 'stamp';
 type ResizeHandle = 'nw' | 'ne' | 'se' | 'sw';
@@ -90,10 +91,13 @@ export default function PdfEditor() {
   const [loadingSpansPages, setLoadingSpansPages] = useState<Record<number, boolean>>({});
   const [selectedSpan, setSelectedSpan] = useState<NativeTextSpan | null>(null);
   const [hoveredSpanId, setHoveredSpanId] = useState<string | null>(null);
+  const [editingSpanId, setEditingSpanId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [editingFont, setEditingFont] = useState('');
   const [editingFontSize, setEditingFontSize] = useState<number>(12);
   const [editingColor, setEditingColor] = useState('#1c302e');
+  const [editingAlign, setEditingAlign] = useState<'left' | 'center' | 'right'>('left');
+  const [editorMode, setEditorMode] = useState<'edit' | 'annotate' | 'organize' | 'forms'>('edit');
   const [nativeEdits, setNativeEdits] = useState<Record<string, NativeTextEdit>>({});
   const [nativeEditsPast, setNativeEditsPast] = useState<Record<string, NativeTextEdit>[]>([]);
   const [nativeEditsFuture, setNativeEditsFuture] = useState<Record<string, NativeTextEdit>[]>([]);
@@ -269,15 +273,19 @@ export default function PdfEditor() {
       if (isField) return;
 
       if (e.key === 'Escape') {
+        if (editingSpanId) {
+          setEditingSpanId(null);
+          return;
+        }
         setSelectedIds(new Set());
         setSelectedSpan(null);
         setTool('select');
         return;
       }
 
-      if (e.key === 'Enter' && selectedSpan) {
+      if (e.key === 'Enter' && selectedSpan && !editingSpanId) {
         e.preventDefault();
-        replacementInputRef.current?.focus();
+        setEditingSpanId(selectedSpan.id);
         return;
       }
 
@@ -544,6 +552,7 @@ export default function PdfEditor() {
   }
 
   function commitSpanEdit(span: NativeTextSpan, newText: string, extra?: { font_name?: string; font_size?: number; color?: string }) {
+    setEditingSpanId(null);
     const resolvedDefaultFont = resolveEditorFontFamily(span.font, newText);
     const rawFont = extra?.font_name || editingFont || span.font;
     const fontName = cleanPdfFontName(rawFont) || resolvedDefaultFont;
@@ -578,6 +587,7 @@ export default function PdfEditor() {
   }
 
   function revertSpanEdit(spanId: string) {
+    setEditingSpanId(null);
     if (!nativeEdits[spanId]) return;
     pushNativeEdits(prev => {
       const next = { ...prev };
@@ -713,13 +723,52 @@ export default function PdfEditor() {
         </div>
 
         {data && (
-          <div className="document-actions">
-            <button className="button secondary small" disabled={busy || !sourceBytes} onClick={() => void runExport(true)}>
-              <Save size={15} /> Save copy
-            </button>
-            <button className="button primary small" disabled={busy || !sourceBytes} onClick={() => void runExport(false)}>
-              <Download size={15} /> Export PDF
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <nav className="editor-mode-nav" aria-label="Editor modes">
+              <button
+                type="button"
+                className={`editor-mode-tab ${editorMode === 'edit' ? 'active' : ''}`}
+                onClick={() => {
+                  setEditorMode('edit');
+                  setTool('select');
+                }}
+              >
+                <PenTool size={13} /> Edit
+              </button>
+              <button
+                type="button"
+                className={`editor-mode-tab ${editorMode === 'annotate' ? 'active' : ''}`}
+                onClick={() => {
+                  setEditorMode('annotate');
+                  setTool('highlight');
+                }}
+              >
+                <Highlighter size={13} /> Annotate
+              </button>
+              <Link
+                to={data ? `/organize?file_id=${data.id}` : '/organize'}
+                className="editor-mode-tab"
+                title="Organize, merge, and split PDF pages"
+              >
+                <Square size={13} /> Organize
+              </Link>
+              <Link
+                to="/tools/forms-sign"
+                className="editor-mode-tab"
+                title="Fill forms and sign documents"
+              >
+                <Signature size={13} /> Fill & Sign
+              </Link>
+            </nav>
+
+            <div className="document-actions">
+              <button className="button secondary small" disabled={busy || !sourceBytes} onClick={() => void runExport(true)}>
+                <Save size={15} /> Save copy
+              </button>
+              <button className="button primary small" disabled={busy || !sourceBytes} onClick={() => void runExport(false)}>
+                <Download size={15} /> Export PDF
+              </button>
+            </div>
           </div>
         )}
       </header>
@@ -928,6 +977,196 @@ export default function PdfEditor() {
             )}
           </div>
 
+          {/* Contextual Text Formatting Toolbar for In-Document Text Editing */}
+          {tool === 'edit-text' && selectedSpan && (
+            <div className="contextual-text-toolbar" role="toolbar" aria-label="Text Formatting Toolbar">
+              <div className="toolbar-segment" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>FONT</span>
+                <select
+                  className="contextual-font-select"
+                  aria-label="Text font family"
+                  value={editingFont || selectedSpan.font}
+                  onChange={e => {
+                    const nextFont = e.target.value;
+                    setEditingFont(nextFont);
+                    if (nativeEdits[selectedSpan.id]) {
+                      commitSpanEdit(selectedSpan, editingText, { font_name: nextFont, font_size: editingFontSize, color: editingColor });
+                    }
+                  }}
+                >
+                  <option value={cleanPdfFontName(selectedSpan.font) || 'KhmerOSBattambang'}>
+                    {cleanPdfFontName(selectedSpan.font) || 'Detected Font'} (Original)
+                  </option>
+                  <optgroup label="Khmer Official & Standard Fonts">
+                    <option value="KhmerOSBattambang">Khmer OS Battambang (Standard Body)</option>
+                    <option value="KhmerOSMuol">Khmer OS Muol (Headings)</option>
+                    <option value="KhmerOSContent">Khmer OS Content</option>
+                    <option value="KhmerOSSiemreap">Khmer OS Siemreap</option>
+                    <option value="KhmerOSBokor">Khmer OS Bokor</option>
+                    <option value="KhmerOSFasthand">Khmer OS Fasthand</option>
+                    <option value="KhmerOSFreehand">Khmer OS Freehand</option>
+                    <option value="KhmerOSMetalChrieng">Khmer OS Metal Chrieng</option>
+                    <option value="Noto Sans Khmer">Noto Sans Khmer</option>
+                    <option value="Noto Serif Khmer">Noto Serif Khmer</option>
+                  </optgroup>
+                  <optgroup label="Standard Latin Fonts">
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              <div className="toolbar-divider" />
+
+              <div className="toolbar-segment" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>SIZE</span>
+                <button
+                  type="button"
+                  className="icon-button small"
+                  aria-label="Decrease font size"
+                  onClick={() => {
+                    const nextSize = Math.max(6, Math.round((editingFontSize || selectedSpan.font_size) - 1));
+                    setEditingFontSize(nextSize);
+                    if (nativeEdits[selectedSpan.id]) {
+                      commitSpanEdit(selectedSpan, editingText, { font_name: editingFont, font_size: nextSize, color: editingColor });
+                    }
+                  }}
+                >
+                  <Minus size={12} />
+                </button>
+                <input
+                  type="number"
+                  aria-label="Font size"
+                  className="contextual-size-input"
+                  value={Math.round(editingFontSize || selectedSpan.font_size)}
+                  min={6}
+                  max={144}
+                  onChange={e => {
+                    const nextSize = parseFloat(e.target.value) || 12;
+                    setEditingFontSize(nextSize);
+                    if (nativeEdits[selectedSpan.id]) {
+                      commitSpanEdit(selectedSpan, editingText, { font_name: editingFont, font_size: nextSize, color: editingColor });
+                    }
+                  }}
+                />
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>pt</span>
+                <button
+                  type="button"
+                  className="icon-button small"
+                  aria-label="Increase font size"
+                  onClick={() => {
+                    const nextSize = Math.round((editingFontSize || selectedSpan.font_size) + 1);
+                    setEditingFontSize(nextSize);
+                    if (nativeEdits[selectedSpan.id]) {
+                      commitSpanEdit(selectedSpan, editingText, { font_name: editingFont, font_size: nextSize, color: editingColor });
+                    }
+                  }}
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+
+              <div className="toolbar-divider" />
+
+              <div className="toolbar-segment" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>COLOR</span>
+                {['#000000', '#1c302e', '#23665a', '#1d70b8', '#d4351c', '#ffffff'].map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={`Select text color ${c}`}
+                    className={`contextual-color-swatch ${editingColor === c ? 'active' : ''}`}
+                    style={{ backgroundColor: c }}
+                    onClick={() => {
+                      setEditingColor(c);
+                      if (nativeEdits[selectedSpan.id]) {
+                        commitSpanEdit(selectedSpan, editingText, { font_name: editingFont, font_size: editingFontSize, color: c });
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className="toolbar-divider" />
+
+              <div className="toolbar-segment" style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <button
+                  type="button"
+                  className={`icon-button small ${editingAlign === 'left' ? 'tool-active' : ''}`}
+                  title="Align left"
+                  aria-label="Align left"
+                  onClick={() => setEditingAlign('left')}
+                >
+                  <AlignLeft size={14} />
+                </button>
+                <button
+                  type="button"
+                  className={`icon-button small ${editingAlign === 'center' ? 'tool-active' : ''}`}
+                  title="Align center"
+                  aria-label="Align center"
+                  onClick={() => setEditingAlign('center')}
+                >
+                  <AlignCenter size={14} />
+                </button>
+                <button
+                  type="button"
+                  className={`icon-button small ${editingAlign === 'right' ? 'tool-active' : ''}`}
+                  title="Align right"
+                  aria-label="Align right"
+                  onClick={() => setEditingAlign('right')}
+                >
+                  <AlignRight size={14} />
+                </button>
+              </div>
+
+              {detectLegacyKhmerArtifacts(editingText) && (
+                <>
+                  <div className="toolbar-divider" />
+                  <button
+                    type="button"
+                    className="clean-khmer-pill"
+                    title="Repair legacy visual Limon keyboard artifacts to standard Unicode"
+                    onClick={() => {
+                      const repaired = repairLegacyKhmerArtifacts(editingText);
+                      setEditingText(repaired);
+                      commitSpanEdit(selectedSpan, repaired, { font_name: editingFont, font_size: editingFontSize, color: editingColor });
+                      setStatusMsg(`Repaired legacy Khmer Unicode: "${editingText}" -> "${repaired}"`);
+                    }}
+                  >
+                    <Sparkles size={12} /> Clean Khmer
+                  </button>
+                </>
+              )}
+
+              <div className="toolbar-divider" />
+
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  className="button secondary small"
+                  style={{ padding: '2px 8px', fontSize: 11 }}
+                  title="Edit directly on page (or double-click text)"
+                  onClick={() => setEditingSpanId(selectedSpan.id)}
+                >
+                  <PenTool size={11} /> Edit on Page
+                </button>
+                {nativeEdits[selectedSpan.id] && (
+                  <button
+                    type="button"
+                    className="button secondary small"
+                    style={{ padding: '2px 8px', fontSize: 11, color: 'var(--red, #d4351c)' }}
+                    title="Revert to original PDF text"
+                    onClick={() => revertSpanEdit(selectedSpan.id)}
+                  >
+                    Revert
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {(errorMsg || statusMsg) && (
             <div className="editor-status-bar">
               {errorMsg && (
@@ -1006,22 +1245,54 @@ export default function PdfEditor() {
                             zIndex: isSelected ? 25 : isHovered ? 20 : 12,
                           };
 
+                          const isEditing = editingSpanId === span.id;
+
+                          if (isEditing) {
+                            return (
+                              <DirectPageTextEditor
+                                key={span.id}
+                                span={span}
+                                scale={scale}
+                                initialText={displayText}
+                                fontFamily={resolvedFont}
+                                fontSize={editingFontSize || span.font_size}
+                                color={editingColor || span.color}
+                                textAlign={editingAlign}
+                                pageWidth={info.width}
+                                onCommit={newText => {
+                                  setEditingSpanId(null);
+                                  commitSpanEdit(span, newText, { font_name: editingFont, font_size: editingFontSize, color: editingColor });
+                                }}
+                                onCancel={() => {
+                                  setEditingSpanId(null);
+                                  setEditingText(edit ? edit.new_text : span.text);
+                                }}
+                                onChange={newText => {
+                                  setEditingText(newText);
+                                }}
+                              />
+                            );
+                          }
+
                           return (
                             <div
                               key={span.id}
                               className={`existing-text-span ${isSelected ? 'selected' : ''} ${edit ? 'edited' : ''}`}
                               style={spanStyle}
-                              title={`Click to edit in Properties panel: "${displayText}"`}
+                              tabIndex={0}
+                              role="button"
+                              aria-label={`Existing text: ${displayText}`}
+                              title={`Click to select, double-click or Enter to edit directly on page: "${displayText}"`}
                               onPointerEnter={() => setHoveredSpanId(span.id)}
                               onPointerLeave={() => setHoveredSpanId(null)}
                               onClick={e => {
                                 e.stopPropagation();
+                                e.currentTarget.focus();
                                 setSelectedSpan(span);
                                 setEditingText(edit ? edit.new_text : span.text);
                                 setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
                                 setEditingColor(edit?.color || span.color);
-                                setTimeout(() => replacementInputRef.current?.focus(), 30);
                               }}
                               onDoubleClick={e => {
                                 e.stopPropagation();
@@ -1030,7 +1301,14 @@ export default function PdfEditor() {
                                 setEditingFont(edit?.font_name || cleanPdfFontName(span.font) || resolvedFont);
                                 setEditingFontSize(edit?.font_size || span.font_size);
                                 setEditingColor(edit?.color || span.color);
-                                setTimeout(() => replacementInputRef.current?.focus(), 30);
+                                setEditingSpanId(span.id);
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setEditingSpanId(span.id);
+                                }
                               }}
                             />
                           );
