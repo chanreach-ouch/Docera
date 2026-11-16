@@ -40,29 +40,37 @@ export function Dashboard({ session }: { session: SessionInfo }) {
 
       <div className="dashboard-content">
         <div className="page-heading">
-          <div className="page-heading-tag">Private Document Workspace</div>
+          <div className="page-heading-tag">
+            <span className="badge-dot" /> Enterprise-Grade PDF Suite
+          </div>
           <h1>Good work starts here.</h1>
-          <p>Professional document engineering. Edit existing text, organize pages, sign, and convert with complete local privacy.</p>
+          <p>World-class PDF engineering. Direct on-page text editing with authentic Khmer & English typography, instant lossless page organizing, and zero-storage private workflows.</p>
+          <div className="hero-feature-pills">
+            <span className="feature-pill">⚡ Direct In-Document Caret</span>
+            <span className="feature-pill">🇰🇭 HarfBuzz Khmer OpenType</span>
+            <span className="feature-pill">🔒 100% Client-Side Privacy</span>
+            <span className="feature-pill">🚀 34 Production Tools</span>
+          </div>
         </div>
 
         <UploadArea session={session} />
 
         <section className="quick-access" aria-label="Available tools">
           <div className="section-title-wrap">
-            <h2>Ready when you are</h2>
-            <p>Start locally in your browser or open dedicated server-backed workflows.</p>
+            <h2>Popular Workflows</h2>
+            <p>Immediate in-browser execution with zero upload latency.</p>
           </div>
           <div className="quick-access-grid">
-            <button className="viewer-shortcut" onClick={() => document.getElementById('browse-files')?.focus()}>
-              <div className="shortcut-icon-box"><BookOpen size={20} strokeWidth={1.6} aria-hidden="true" /></div>
+            <button className="viewer-shortcut" onClick={() => document.getElementById('browse-files')?.click()}>
+              <div className="shortcut-icon-box"><BookOpen size={22} strokeWidth={1.8} aria-hidden="true" /></div>
               <span className="shortcut-meta">
-                <strong>PDF viewer</strong>
-                <span>Open, search & read</span>
+                <strong>Edit Existing PDF</strong>
+                <span>Direct on-page text & shapes</span>
               </span>
               <ArrowUpRight size={16} className="shortcut-arrow" aria-hidden="true" />
             </button>
             <Link className="viewer-shortcut" to="/tools/organize">
-              <div className="shortcut-icon-box"><Layers size={20} strokeWidth={1.6} aria-hidden="true" /></div>
+              <div className="shortcut-icon-box"><Layers size={22} strokeWidth={1.8} aria-hidden="true" /></div>
               <span className="shortcut-meta">
                 <strong>Organize PDF</strong>
                 <span>Merge, split & reorder</span>
@@ -70,7 +78,7 @@ export function Dashboard({ session }: { session: SessionInfo }) {
               <ArrowUpRight size={16} className="shortcut-arrow" aria-hidden="true" />
             </Link>
             <Link className="viewer-shortcut" to="/tools/customize">
-              <div className="shortcut-icon-box"><Sparkles size={20} strokeWidth={1.6} aria-hidden="true" /></div>
+              <div className="shortcut-icon-box"><Sparkles size={22} strokeWidth={1.8} aria-hidden="true" /></div>
               <span className="shortcut-meta">
                 <strong>Customize PDF</strong>
                 <span>Watermarks, numbers & crop</span>
@@ -78,7 +86,7 @@ export function Dashboard({ session }: { session: SessionInfo }) {
               <ArrowUpRight size={16} className="shortcut-arrow" aria-hidden="true" />
             </Link>
             <Link className="viewer-shortcut" to="/tools/security">
-              <div className="shortcut-icon-box"><Shield size={20} strokeWidth={1.6} aria-hidden="true" /></div>
+              <div className="shortcut-icon-box"><Shield size={22} strokeWidth={1.8} aria-hidden="true" /></div>
               <span className="shortcut-meta">
                 <strong>Protect & Redact</strong>
                 <span>Encrypt & scrub metadata</span>
@@ -171,10 +179,18 @@ export function Dashboard({ session }: { session: SessionInfo }) {
                 </summary>
                 <ul className="tool-grid">
                   {group.tools.map(tool => (
-                    <li key={tool.id} className="tool-card">
+                    <li
+                      key={tool.id}
+                      className="tool-card"
+                      onClick={() => {
+                        if (tool.to === '#browse') {
+                          document.getElementById('browse-files')?.click();
+                        }
+                      }}
+                    >
                       <div className="tool-card-header">
-                        <div className="tool-card-icon">
-                          <ToolIcon name={tool.icon} size={18} />
+                        <div className={`tool-card-icon icon-group-${group.id}`}>
+                          <ToolIcon name={tool.icon} size={20} />
                         </div>
                         <div className="tool-card-badges">
                           <span className={`badge ${tool.execution.toLowerCase().includes('local') ? 'badge-local' : 'badge-server'}`}>
@@ -192,12 +208,19 @@ export function Dashboard({ session }: { session: SessionInfo }) {
                           <button
                             type="button"
                             className="text-link tool-action-link"
-                            onClick={() => document.getElementById('browse-files')?.click()}
+                            onClick={e => {
+                              e.stopPropagation();
+                              document.getElementById('browse-files')?.click();
+                            }}
                           >
                             Open PDF <ArrowUpRight size={14} aria-hidden="true" />
                           </button>
                         ) : (
-                          <Link className="text-link tool-action-link" to={tool.to}>
+                          <Link
+                            className="text-link tool-action-link"
+                            to={tool.to}
+                            onClick={e => e.stopPropagation()}
+                          >
                             Open tool <ArrowUpRight size={14} aria-hidden="true" />
                           </Link>
                         )}
