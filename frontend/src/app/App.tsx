@@ -42,37 +42,83 @@ function Settings({ session }: { session: SessionInfo }) {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return <div className="app-shell">
-    <aside className="sidebar">
-      <Brand />
-      <nav aria-label="Main navigation">
-        <NavLink to="/" end><LayoutDashboard size={18} aria-hidden="true" />Workspace</NavLink>
-        <Link to="/#tools"><Grid2X2 size={18} aria-hidden="true" />All tools</Link>
-        <Link to="/#recent"><Clock3 size={18} aria-hidden="true" />Recent documents</Link>
-        <NavLink to="/tools/organize"><Layers size={18} aria-hidden="true" />Organize PDF</NavLink>
-        <NavLink to="/tools/customize"><Sparkles size={18} aria-hidden="true" />Customize</NavLink>
-        <NavLink to="/tools/compress"><Minimize2 size={18} aria-hidden="true" />Compress</NavLink>
-        <NavLink to="/tools/convert"><FileOutput size={18} aria-hidden="true" />Convert</NavLink>
-        <NavLink to="/tools/ocr"><ScanText size={18} aria-hidden="true" />OCR PDF</NavLink>
-        <NavLink to="/tools/forms-sign"><FileCheck2 size={18} aria-hidden="true" />Forms & Sign</NavLink>
-        <NavLink to="/tools/security"><Shield size={18} aria-hidden="true" />Protect & Redact</NavLink>
-        <NavLink to="/tools/batch"><FolderKanban size={18} aria-hidden="true" />Batch</NavLink>
-      </nav>
-      <div className="sidebar-bottom">
-        <div className="sidebar-theme-wrap">
-          <ThemeToggle />
+  return (
+    <div className="app-shell">
+      <aside className="sidebar" aria-label="Sidebar navigation">
+        <div className="sidebar-brand-wrap">
+          <Brand />
+          <span className="sidebar-tag">WORKSPACE</span>
         </div>
-        <div className="privacy-note">
-          <ShieldCheck size={22} strokeWidth={1.5} aria-hidden="true" />
-          <strong>Your documents.<br />Your workspace.</strong>
-          <p>Private session access.<br />Automatic file cleanup.</p>
+        <nav aria-label="Main navigation">
+          <div className="nav-section-title">Overview</div>
+          <NavLink to="/" end>
+            <LayoutDashboard size={18} aria-hidden="true" />
+            <span>Workspace</span>
+          </NavLink>
+          <Link to="/#tools">
+            <Grid2X2 size={18} aria-hidden="true" />
+            <span>All Tools</span>
+          </Link>
+          <Link to="/#recent">
+            <Clock3 size={18} aria-hidden="true" />
+            <span>Recent Documents</span>
+          </Link>
+
+          <div className="nav-section-title">Document Tools</div>
+          <NavLink to="/tools/organize">
+            <Layers size={18} aria-hidden="true" />
+            <span>Organize PDF</span>
+          </NavLink>
+          <NavLink to="/tools/customize">
+            <Sparkles size={18} aria-hidden="true" />
+            <span>Customize</span>
+          </NavLink>
+          <NavLink to="/tools/compress">
+            <Minimize2 size={18} aria-hidden="true" />
+            <span>Compress</span>
+          </NavLink>
+          <NavLink to="/tools/convert">
+            <FileOutput size={18} aria-hidden="true" />
+            <span>Convert</span>
+          </NavLink>
+          <NavLink to="/tools/ocr">
+            <ScanText size={18} aria-hidden="true" />
+            <span>OCR PDF</span>
+          </NavLink>
+          <NavLink to="/tools/forms-sign">
+            <FileCheck2 size={18} aria-hidden="true" />
+            <span>Forms & Sign</span>
+          </NavLink>
+          <NavLink to="/tools/security">
+            <Shield size={18} aria-hidden="true" />
+            <span>Protect & Redact</span>
+          </NavLink>
+          <NavLink to="/tools/batch">
+            <FolderKanban size={18} aria-hidden="true" />
+            <span>Batch Processing</span>
+          </NavLink>
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-theme-wrap">
+            <ThemeToggle />
+          </div>
+          <div className="privacy-note">
+            <ShieldCheck size={20} strokeWidth={1.5} aria-hidden="true" />
+            <div>
+              <strong>Private & Secure</strong>
+              <p>In-browser execution with automatic session cleanup.</p>
+            </div>
+          </div>
+          <NavLink to="/settings" className="settings-link">
+            <Settings2 size={18} aria-hidden="true" />
+            <span>Settings</span>
+          </NavLink>
+          <span className="release-label">Docera · v1.0.0</span>
         </div>
-        <NavLink to="/settings" className="settings-link"><Settings2 size={18} aria-hidden="true" />Settings</NavLink>
-        <span className="release-label">Docera · v1.0</span>
-      </div>
-    </aside>
-    {children}
-  </div>;
+      </aside>
+      {children}
+    </div>
+  );
 }
 
 function ToolRoute({ children }: { children: React.ReactNode }) {

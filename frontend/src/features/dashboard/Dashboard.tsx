@@ -1,4 +1,4 @@
-import { ArrowUpRight, BookOpen, Layers, Search, Shield, Sparkles } from 'lucide-react';
+import { ArrowUpRight, BookOpen, Layers, Search, Shield, Sparkles, X, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { matchingGroups } from './tools';
@@ -21,19 +21,28 @@ export function Dashboard({ session }: { session: SessionInfo }) {
     <div className="dashboard">
       <header className="workspace-header">
         <div className="workspace-header-info">
-          <span>Personal workspace</span>
-          <span className="session-label"><span className="status-dot" />Local session</span>
+          <span className="workspace-badge-pill">
+            <CheckCircle2 size={13} className="text-forest" aria-hidden="true" />
+            <span>Personal Workspace</span>
+          </span>
+          <span className="session-label">
+            <span className="status-dot" />
+            Local session active
+          </span>
         </div>
         <div className="workspace-header-actions">
           <ThemeToggle />
-          <Link to="/settings" className="header-link" title="Workspace limits & settings">Settings</Link>
+          <Link to="/settings" className="header-link" title="Workspace limits & settings">
+            Settings
+          </Link>
         </div>
       </header>
 
       <div className="dashboard-content">
         <div className="page-heading">
+          <div className="page-heading-tag">Private Document Workspace</div>
           <h1>Good work starts here.</h1>
-          <p>A little less document admin. A little more getting things done.</p>
+          <p>Professional document engineering. Edit existing text, organize pages, sign, and convert with complete local privacy.</p>
         </div>
 
         <UploadArea session={session} />
@@ -89,16 +98,28 @@ export function Dashboard({ session }: { session: SessionInfo }) {
                 Choose a workflow below. Local tools stay inside your browser; server tools note when files upload to this session.
               </p>
             </div>
-            <label className="tool-search">
-              <Search size={17} aria-hidden="true" />
-              <input
-                type="search"
-                placeholder="Find a tool…"
-                aria-label="Search tools"
-                value={search}
-                onChange={event => setSearch(event.target.value)}
-              />
-            </label>
+            <div className="tool-search-wrap">
+              <label className="tool-search">
+                <Search size={16} aria-hidden="true" />
+                <input
+                  type="search"
+                  placeholder="Find a tool (e.g. merge, edit, ocr)…"
+                  aria-label="Search tools"
+                  value={search}
+                  onChange={event => setSearch(event.target.value)}
+                />
+                {search && (
+                  <button
+                    type="button"
+                    className="tool-search-clear"
+                    onClick={() => setSearch('')}
+                    aria-label="Clear search"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </label>
+            </div>
           </div>
 
           {!search && (
@@ -128,9 +149,14 @@ export function Dashboard({ session }: { session: SessionInfo }) {
           )}
 
           {!filteredGroups.length && (
-            <p className="empty-state" role="status">
-              No tools match “{search}”. Try a different search.
-            </p>
+            <div className="empty-state-card" role="status">
+              <Search size={28} className="empty-state-icon" aria-hidden="true" />
+              <h3>No matching tools found</h3>
+              <p>No tools match “{search}”. Try searching for “edit”, “merge”, “split”, or “convert”.</p>
+              <button className="button secondary small" onClick={() => setSearch('')}>
+                Clear search filter
+              </button>
+            </div>
           )}
 
           <div className="tool-directory">
