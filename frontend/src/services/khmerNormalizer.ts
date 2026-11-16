@@ -70,8 +70,8 @@ const LEGACY_REPLACEMENTS: [RegExp, string][] = [
   [/ផ្សែងយល់/g, 'ស្វែងយល់'],
   [/ផ្សែង/g, 'ស្វែង'],
   [/ធនាគា\b/g, 'ធនាគារ'],
-  [/ហ្\s*ែ\s*ីលីព|ហ្ែីលីព|ហវីលីព/g, 'ហ្វឺលីព'],
-  [/ហ្\s*ែ\s*ី|ហ្ែី/g, 'ហ្វឺ'],
+  [/ហ្\s*ែ\s*ីលីព|ហ្ែីលីព|ហវីលីព/g, 'ហ្វីលីព'],
+  [/ហ្\s*ែ\s*ី|ហ្ែី/g, 'ហ្វី'],
   [/ហ្ិរញ្ញវត្ថុ/g, 'ហិរញ្ញវត្ថុ'],
   [/ភី?អិលសុ[\s\u17BB\u17B8\u17CA]*/g, 'ភីអិលស៊ី'],
   [/ភី?អិលស[ី៊ី]+/g, 'ភីអិលស៊ី'],
@@ -242,9 +242,18 @@ export function normalizeKhmerUnicode(text: string): string {
   norm = norm.replace(/\u17B8{2,}/g, '\u17B8');
   norm = norm.replace(/\u17BB{2,}/g, '\u17BB');
 
-  // Repair illegal coeng before upper vowels: \u17D2\u17C2\u17B8 (្ែី) -> \u17D2\u179C\u17BA (្វឺ)
-  norm = norm.replace(/\u17D2\u17C2\u17B8/g, '\u17D2\u179C\u17BA');
+  // Repair illegal coeng before upper vowels: \u17D2\u17C2\u17B8 (្ែី) -> \u17D2\u179C\u17B8 (្វី)
+  norm = norm.replace(/\u17D2\u17C2\u17B8/g, '\u17D2\u179C\u17B8');
   norm = norm.replace(/\u17D2\u17C2/g, '\u17D2\u179C\u17C2');
+  norm = norm.replace(/\u17A0\u17D2\u17C2?\u17B8/g, '\u17A0\u17D2\u179C\u17B8');
+  norm = norm.replace(/\u17A0\u17D2\u17B8/g, '\u17A0\u17D2\u179C\u17B8');
+
+  // Fix illegal coeng after nikahit: ចំ + ្ + ព -> ចំព (e.g. ចំពោះ)
+  norm = norm.replace(/([\u17C6])\u17D2([\u1780-\u17A2])/g, '$1$2');
+
+  // Fix conflicting double vowels after ោ (U+17C4): ោ + េ -> ោ (e.g. គ្រោេះ -> គ្រោះ)
+  norm = norm.replace(/\u17C4\u17C1/g, '\u17C4');
+
   norm = norm.replace(/\u17D2\s+/g, '');
   norm = norm.replace(/\u17D2(?=[\u17B6-\u17D3\s]|$)/g, '');
 

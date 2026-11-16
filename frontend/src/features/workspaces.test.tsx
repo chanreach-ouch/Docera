@@ -79,7 +79,7 @@ describe('Docera Workspaces Integration', () => {
     const readyBadges = await screen.findAllByText('Ready');
     expect(readyBadges.length).toBeGreaterThanOrEqual(7);
 
-    const mergeLink = screen.getByText('Merge PDF').closest('li')?.querySelector('a');
+    const mergeLink = screen.getAllByText('Merge PDF').find(el => el.closest('li'))?.closest('li')?.querySelector('a');
     expect(mergeLink).toHaveAttribute('href', '/tools/organize?mode=merge');
   });
 

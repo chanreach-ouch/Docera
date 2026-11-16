@@ -1,11 +1,12 @@
-import { ArrowUpRight, BookOpen, Layers, Search, Shield, Sparkles, X, CheckCircle2 } from 'lucide-react';
+import { Check, Search, X } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { matchingGroups } from './tools';
 import { ToolIcon } from './ToolIcon';
 import { UploadArea } from './UploadArea';
+import { HeroIllustration } from './HeroIllustration';
+import { PopularTools } from './PopularTools';
 import { RecentDocuments } from './RecentDocuments';
-import { ThemeToggle } from '../../components/ThemeToggle';
+import { PromoCard } from './PromoCard';
 import type { SessionInfo } from '../../types/files';
 
 export function Dashboard({ session }: { session: SessionInfo }) {
@@ -18,226 +19,167 @@ export function Dashboard({ session }: { session: SessionInfo }) {
     : allGroups.filter(g => g.id === activeCategory);
 
   return (
-    <div className="dashboard">
-      <header className="workspace-header">
-        <div className="workspace-header-info">
-          <span className="workspace-badge-pill">
-            <CheckCircle2 size={13} className="text-forest" aria-hidden="true" />
-            <span>Personal Workspace</span>
-          </span>
-          <span className="session-label">
-            <span className="status-dot" />
-            Local session active
-          </span>
-        </div>
-        <div className="workspace-header-actions">
-          <ThemeToggle />
-          <Link to="/settings" className="header-link" title="Workspace limits & settings">
-            Settings
-          </Link>
-        </div>
-      </header>
-
-      <div className="dashboard-content">
-        <div className="page-heading">
-          <div className="page-heading-tag">
-            <span className="badge-dot" /> Enterprise-Grade PDF Suite
-          </div>
-          <h1>Good work starts here.</h1>
-          <p>World-class PDF engineering. Direct on-page text editing with authentic Khmer & English typography, instant lossless page organizing, and zero-storage private workflows.</p>
-          <div className="hero-feature-pills">
-            <span className="feature-pill">⚡ Direct In-Document Caret</span>
-            <span className="feature-pill">🇰🇭 HarfBuzz Khmer OpenType</span>
-            <span className="feature-pill">🔒 100% Client-Side Privacy</span>
-            <span className="feature-pill">🚀 34 Production Tools</span>
-          </div>
+    <div className="approved-dashboard">
+      {/* Hero Section */}
+      <section className="approved-hero-section" aria-label="Hero Introduction">
+        <div className="hero-left-col">
+          <h1 className="hero-main-title">
+            All-in-one PDF solution for work and productivity
+            <span className="visually-hidden"> Good work starts here.</span>
+          </h1>
+          <p className="hero-subtitle">
+            Edit, convert, compress, merge, sign, and more — fast, secure, and free.
+          </p>
+          <ul className="hero-check-list">
+            <li>
+              <span className="hero-check-icon">
+                <Check size={16} strokeWidth={2.5} aria-hidden="true" />
+              </span>
+              <span>Professional editing</span>
+            </li>
+            <li>
+              <span className="hero-check-icon">
+                <Check size={16} strokeWidth={2.5} aria-hidden="true" />
+              </span>
+              <span>Full Khmer &amp; English support</span>
+            </li>
+            <li>
+              <span className="hero-check-icon">
+                <Check size={16} strokeWidth={2.5} aria-hidden="true" />
+              </span>
+              <span>Your files stay private and secure</span>
+            </li>
+          </ul>
         </div>
 
-        <UploadArea session={session} />
+        <div className="hero-center-col">
+          <UploadArea session={session} />
+        </div>
 
-        <section className="quick-access" aria-label="Available tools">
-          <div className="section-title-wrap">
-            <h2>Popular Workflows</h2>
-            <p>Immediate in-browser execution with zero upload latency.</p>
-          </div>
-          <div className="quick-access-grid">
-            <button className="viewer-shortcut" onClick={() => document.getElementById('browse-files')?.click()}>
-              <div className="shortcut-icon-box"><BookOpen size={22} strokeWidth={1.8} aria-hidden="true" /></div>
-              <span className="shortcut-meta">
-                <strong>Edit Existing PDF</strong>
-                <span>Direct on-page text & shapes</span>
-              </span>
-              <ArrowUpRight size={16} className="shortcut-arrow" aria-hidden="true" />
-            </button>
-            <Link className="viewer-shortcut" to="/tools/organize">
-              <div className="shortcut-icon-box"><Layers size={22} strokeWidth={1.8} aria-hidden="true" /></div>
-              <span className="shortcut-meta">
-                <strong>Organize PDF</strong>
-                <span>Merge, split & reorder</span>
-              </span>
-              <ArrowUpRight size={16} className="shortcut-arrow" aria-hidden="true" />
-            </Link>
-            <Link className="viewer-shortcut" to="/tools/customize">
-              <div className="shortcut-icon-box"><Sparkles size={22} strokeWidth={1.8} aria-hidden="true" /></div>
-              <span className="shortcut-meta">
-                <strong>Customize PDF</strong>
-                <span>Watermarks, numbers & crop</span>
-              </span>
-              <ArrowUpRight size={16} className="shortcut-arrow" aria-hidden="true" />
-            </Link>
-            <Link className="viewer-shortcut" to="/tools/security">
-              <div className="shortcut-icon-box"><Shield size={22} strokeWidth={1.8} aria-hidden="true" /></div>
-              <span className="shortcut-meta">
-                <strong>Protect & Redact</strong>
-                <span>Encrypt & scrub metadata</span>
-              </span>
-              <ArrowUpRight size={16} className="shortcut-arrow" aria-hidden="true" />
-            </Link>
-          </div>
-        </section>
+        <div className="hero-right-col">
+          <HeroIllustration />
+        </div>
+      </section>
 
-        <RecentDocuments />
+      {/* Popular Tools & Overview (Visible when not actively searching) */}
+      {!search && (
+        <>
+          <PopularTools />
 
-        <section id="tools" className="tools-section" aria-labelledby="tools-heading">
-          <div className="section-heading">
-            <div>
-              <h2 id="tools-heading">A place for every document task</h2>
-              <p className="section-description">
-                Choose a workflow below. Local tools stay inside your browser; server tools note when files upload to this session.
-              </p>
+          {/* Two-Column Bottom Section: Recent Documents + Promo Card */}
+          <section className="dashboard-bottom-split" aria-label="Recent documents and overview">
+            <div className="split-left-col">
+              <RecentDocuments />
             </div>
-            <div className="tool-search-wrap">
-              <label className="tool-search">
-                <Search size={16} aria-hidden="true" />
-                <input
-                  type="search"
-                  placeholder="Find a tool (e.g. merge, edit, ocr)…"
-                  aria-label="Search tools"
-                  value={search}
-                  onChange={event => setSearch(event.target.value)}
-                />
-                {search && (
-                  <button
-                    type="button"
-                    className="tool-search-clear"
-                    onClick={() => setSearch('')}
-                    aria-label="Clear search"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </label>
+            <div className="split-right-col">
+              <PromoCard />
             </div>
-          </div>
+          </section>
+        </>
+      )}
 
-          {!search && (
-            <div className="category-filter-bar" role="tablist" aria-label="Tool categories">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeCategory === 'all'}
-                className={`category-chip ${activeCategory === 'all' ? 'active' : ''}`}
-                onClick={() => setActiveCategory('all')}
-              >
-                All Tools
-              </button>
-              {allGroups.map(g => (
+      {/* Complete Searchable Tool Directory */}
+      <section id="tools" className="tools-directory-section" aria-labelledby="tools-heading">
+        <div className="directory-header">
+          <div>
+            <h2 id="tools-heading" className="directory-title">All Document Tools</h2>
+            <p className="directory-desc">
+              All 34 production-ready PDF utilities. Local tools execute 100% inside your browser.
+            </p>
+          </div>
+          <div className="directory-search-wrap">
+            <label className="directory-search-label">
+              <Search size={16} aria-hidden="true" />
+              <input
+                id="search-tools"
+                type="search"
+                placeholder="Search tools (e.g. merge, edit, compress)…"
+                aria-label="Search tools"
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+              />
+              {search && (
                 <button
-                  key={g.id}
                   type="button"
-                  role="tab"
-                  aria-selected={activeCategory === g.id}
-                  className={`category-chip ${activeCategory === g.id ? 'active' : ''}`}
-                  onClick={() => setActiveCategory(g.id)}
+                  className="search-clear-btn"
+                  onClick={() => setSearch('')}
+                  aria-label="Clear search"
                 >
-                  {g.name}
+                  <X size={14} />
                 </button>
-              ))}
-            </div>
-          )}
+              )}
+            </label>
+          </div>
+        </div>
 
-          {!filteredGroups.length && (
-            <div className="empty-state-card" role="status">
-              <Search size={28} className="empty-state-icon" aria-hidden="true" />
-              <h3>No matching tools found</h3>
-              <p>No tools match “{search}”. Try searching for “edit”, “merge”, “split”, or “convert”.</p>
-              <button className="button secondary small" onClick={() => setSearch('')}>
-                Clear search filter
-              </button>
-            </div>
-          )}
+        {/* Category Pills */}
+        <div className="category-pill-bar" role="tablist" aria-label="Tool Categories">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeCategory === 'all'}
+            className={`category-pill ${activeCategory === 'all' ? 'active' : ''}`}
+            onClick={() => setActiveCategory('all')}
+          >
+            All Categories ({allGroups.reduce((acc, g) => acc + g.tools.length, 0)})
+          </button>
+          {allGroups.map(group => (
+            <button
+              key={group.id}
+              type="button"
+              role="tab"
+              aria-selected={activeCategory === group.id}
+              className={`category-pill ${activeCategory === group.id ? 'active' : ''}`}
+              onClick={() => setActiveCategory(group.id)}
+            >
+              {group.name} ({group.tools.length})
+            </button>
+          ))}
+        </div>
 
-          <div className="tool-directory">
+        {filteredGroups.length === 0 ? (
+          <div className="empty-tools-state">
+            <p>No tools matched “{search}”.</p>
+            <button type="button" className="button quiet" onClick={() => setSearch('')}>
+              Clear search filter
+            </button>
+          </div>
+        ) : (
+          <div className="tool-category-grid">
             {filteredGroups.map(group => (
-              <details key={group.id} className="tool-group" open>
-                <summary>
-                  <span className="group-summary-header">
-                    <strong>{group.name}</strong>
-                    <span>{group.description}</span>
-                  </span>
-                  <span className="badge available">Ready</span>
-                </summary>
-                <ul className="tool-grid">
+              <div key={group.id} className="category-deck-card">
+                <div className="deck-header">
+                  <h3 className="deck-title">{group.name}</h3>
+                  <span className="deck-count">{group.tools.length} tools</span>
+                </div>
+                <p className="deck-description">{group.description}</p>
+                <ul className="deck-tool-list">
                   {group.tools.map(tool => (
-                    <li
-                      key={tool.id}
-                      className="tool-card"
-                      onClick={() => {
-                        if (tool.to === '#browse') {
-                          document.getElementById('browse-files')?.click();
-                        }
-                      }}
-                    >
-                      <div className="tool-card-header">
-                        <div className={`tool-card-icon icon-group-${group.id}`}>
-                          <ToolIcon name={tool.icon} size={20} />
+                    <li key={tool.id} className="deck-tool-item">
+                      <a
+                        href={tool.to}
+                        className="deck-tool-link"
+                        title={tool.description}
+                      >
+                        <div className="deck-tool-icon-col">
+                          <ToolIcon name={tool.icon} />
                         </div>
-                        <div className="tool-card-badges">
-                          <span className={`badge ${tool.execution.toLowerCase().includes('local') ? 'badge-local' : 'badge-server'}`}>
-                            {tool.execution}
-                          </span>
-                          <span className="badge available">Ready</span>
+                        <div className="deck-tool-text-col">
+                          <div className="deck-tool-name-row">
+                            <span className="deck-tool-name">{tool.label}</span>
+                            <span className="tool-status-badge">Ready</span>
+                          </div>
+                          <span className="deck-tool-desc">{tool.description}</span>
                         </div>
-                      </div>
-                      <div className="tool-card-body">
-                        <strong>{tool.label}</strong>
-                        <p>{tool.description}</p>
-                      </div>
-                      <div className="tool-card-footer">
-                        {tool.to === '#browse' ? (
-                          <button
-                            type="button"
-                            className="text-link tool-action-link"
-                            onClick={e => {
-                              e.stopPropagation();
-                              document.getElementById('browse-files')?.click();
-                            }}
-                          >
-                            Open PDF <ArrowUpRight size={14} aria-hidden="true" />
-                          </button>
-                        ) : (
-                          <Link
-                            className="text-link tool-action-link"
-                            to={tool.to}
-                            onClick={e => e.stopPropagation()}
-                          >
-                            Open tool <ArrowUpRight size={14} aria-hidden="true" />
-                          </Link>
-                        )}
-                      </div>
+                      </a>
                     </li>
                   ))}
                 </ul>
-              </details>
+              </div>
             ))}
           </div>
-        </section>
-
-        <footer className="workspace-footer">
-          <span>Made for the work in your documents.</span>
-          <span>Docera · Production workspace</span>
-        </footer>
-      </div>
+        )}
+      </section>
     </div>
   );
 }

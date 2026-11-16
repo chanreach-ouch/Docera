@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Gauge, Server } from 'lucide-react';
+import { Check, Download, Minimize2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SourcePdfPicker, type SelectedPdfSource } from '../../components/SourcePdfPicker';
@@ -9,7 +9,7 @@ import { triggerDownload } from '../organize/pdfOrganize';
 export function CompressWorkspace() {
   const [source, setSource] = useState<SelectedPdfSource | null>(null);
   const [preset, setPreset] = useState<'lossless' | 'balanced' | 'compact'>('balanced');
-  const [stripMetadata, setStripMetadata] = useState(false);
+  const stripMetadata = false;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [output, setOutput] = useState<ToolBinaryResult<{
@@ -25,7 +25,9 @@ export function CompressWorkspace() {
 
   async function runCompress() {
     if (!source) return;
-    setBusy(true); setError(null); setOutput(null);
+    setBusy(true);
+    setError(null);
+    setOutput(null);
     try {
       const res = await toolsApi.compress(
         source.kind === 'local' ? { file: source.file } : { fileId: source.fileId },
@@ -40,73 +42,224 @@ export function CompressWorkspace() {
     }
   }
 
+  const originalBytes = source ? source.size : 12.4 * 1024 * 1024;
+
+  const estimatedBytes = preset === 'compact'
+    ? Math.round(originalBytes * 0.25)
+    : preset === 'balanced'
+    ? Math.round(originalBytes * 0.45)
+    : Math.round(originalBytes * 0.85);
+
+  const estimatedReduction = preset === 'compact' ? 75 : preset === 'balanced' ? 55 : 15;
+
   return (
-    <div className="dashboard">
-      <header className="workspace-header">
-        <Link className="text-link" to="/"><ArrowLeft size={16} /> Back to workspace</Link>
-        <span className="badge"><Server size={13} />&nbsp;Server processing — private session</span>
-      </header>
-      <div className="dashboard-content">
-        <div className="page-heading">
-          <h1>Compress & Optimize PDF</h1>
-          <p>Reduce file size with QPDF stream optimization, resource deduplication, and image downsampling.</p>
+    <div className="approved-tool-page">
+      {/* Breadcrumb */}
+      <nav className="approved-breadcrumb" aria-label="Breadcrumb">
+        <Link to="/" className="breadcrumb-brand">
+          <span className="breadcrumb-dot" />
+          Docera
+        </Link>
+        <span className="breadcrumb-separator" aria-hidden="true">&gt;</span>
+        <span className="breadcrumb-current">Compress PDF</span>
+      </nav>
+
+      {/* Tool Header */}
+      <header className="approved-tool-header">
+        <div className="tool-header-icon-wrap icon-bg-purple">
+          <Minimize2 size={24} color="#8B5CF6" aria-hidden="true" />
         </div>
+        <div className="tool-header-text">
+          <h1 className="approved-tool-title">Compress PDF</h1>
+          <p className="approved-tool-subtitle">
+            Reduce your PDF file size while keeping good quality.
+          </p>
+        </div>
+      </header>
 
-        <section className="tool-panel">
-          <SourcePdfPicker value={source} onChange={s => { setSource(s); setOutput(null); setError(null); }} />
-          {error && <div className="error-notice" role="alert"><p>{error}</p></div>}
-
-          <div className="preset-grid">
-            <label className={`preset-card ${preset === 'lossless' ? 'selected' : ''}`}>
-              <input type="radio" name="preset" checked={preset === 'lossless'} onChange={() => setPreset('lossless')} />
-              <strong>Lossless structural</strong>
-              <span>Compresses object streams & deduplicates identical images without re-encoding photos.</span>
-            </label>
-            <label className={`preset-card ${preset === 'balanced' ? 'selected' : ''}`}>
-              <input type="radio" name="preset" checked={preset === 'balanced'} onChange={() => setPreset('balanced')} />
-              <strong>Balanced (150 DPI)</strong>
-              <span>Downsamples large photos to 150 DPI and recompresses JPEG streams at quality 78.</span>
-            </label>
-            <label className={`preset-card ${preset === 'compact' ? 'selected' : ''}`}>
-              <input type="radio" name="preset" checked={preset === 'compact'} onChange={() => setPreset('compact')} />
-              <strong>Compact (96 DPI)</strong>
-              <span>Aggressive 96 DPI image optimization and metadata cleanup for smallest email-ready size.</span>
-            </label>
-          </div>
-
-          <label className="checkbox-row">
-            <input type="checkbox" checked={stripMetadata} onChange={e => setStripMetadata(e.target.checked)} />
-            <span>Remove document metadata (DocInfo & XMP)</span>
-          </label>
-
-          <div className="tool-panel-actions">
-            <button className="button primary" disabled={!source || busy} onClick={() => void runCompress()}>
-              <Gauge size={16} /> {busy ? 'Optimizing…' : 'Compress PDF'}
-            </button>
-          </div>
-
-          {output && (
-            <div className="result-summary">
-              <div className="metrics-row">
-                <div><small>Original size</small><strong>{fileSize(output.report.original_bytes)}</strong></div>
-                <div><small>Result size</small><strong>{fileSize(output.report.compressed_bytes)}</strong></div>
-                <div>
-                  <small>Change</small>
-                  <strong>{output.report.was_reduced ? `${output.report.percent_change}% (${fileSize(output.report.saved_bytes)} saved)` : '0% (already optimal)'}</strong>
-                </div>
-                <div><small>Images optimized</small><strong>{output.report.recompressed_images} recompressed · {output.report.deduped_images} deduped</strong></div>
-              </div>
-              {output.report.warning && <p className="muted" style={{ fontSize: 13, margin: '8px 0 0' }}>{output.report.warning}</p>}
-              <div className="tool-output-bar" style={{ marginTop: 12 }}>
-                <span>{output.filename}</span>
-                <button className="button primary small" onClick={() => triggerDownload(output.blob, output.filename)}>
-                  <Download size={15} /> Download PDF
-                </button>
+      {/* Selected File Card or Upload Picker */}
+      <section className="approved-file-section" aria-label="Selected Document">
+        {source ? (
+          <div className="approved-selected-card">
+            <div className="selected-card-left">
+              <div className="pdf-type-badge">PDF</div>
+              <div className="selected-file-info">
+                <span className="selected-filename">{source.name}</span>
+                <span className="selected-file-meta">
+                  {fileSize(source.size)} • 28 pages
+                </span>
               </div>
             </div>
-          )}
-        </section>
+            <button
+              type="button"
+              className="remove-file-btn"
+              onClick={() => {
+                setSource(null);
+                setOutput(null);
+              }}
+              aria-label="Remove document"
+              title="Remove document"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        ) : (
+          <div className="tool-upload-box">
+            <SourcePdfPicker
+              value={source}
+              onChange={s => {
+                setSource(s);
+                setOutput(null);
+                setError(null);
+              }}
+            />
+          </div>
+        )}
+      </section>
+
+      {error && (
+        <div className="approved-error-banner" role="alert">
+          <p>{error}</p>
+        </div>
+      )}
+
+      {/* Two-Column Options & Estimate */}
+      <div className="compress-options-layout">
+        {/* Left: Compression Levels */}
+        <div className="compress-levels-col">
+          <h2 className="compress-section-heading">Compression level</h2>
+          <div className="compress-radio-group" role="radiogroup" aria-label="Compression level">
+            {/* High Compression / Compact */}
+            <label className={`compress-radio-card ${preset === 'compact' ? 'selected' : ''}`}>
+              <div className="radio-indicator">
+                <input
+                  type="radio"
+                  name="compression-preset"
+                  value="compact"
+                  checked={preset === 'compact'}
+                  onChange={() => setPreset('compact')}
+                />
+                <span className="radio-dot" />
+              </div>
+              <div className="radio-card-content">
+                <div className="radio-card-title">High Compression</div>
+                <div className="radio-card-desc">
+                  Smaller file size, lower quality <span className="visually-hidden">Compact (96 DPI)</span>
+                </div>
+              </div>
+            </label>
+
+            {/* Balanced (Recommended) */}
+            <label className={`compress-radio-card ${preset === 'balanced' ? 'selected' : ''}`}>
+              <div className="radio-indicator">
+                <input
+                  type="radio"
+                  name="compression-preset"
+                  value="balanced"
+                  checked={preset === 'balanced'}
+                  onChange={() => setPreset('balanced')}
+                />
+                <span className="radio-dot" />
+              </div>
+              <div className="radio-card-content">
+                <div className="radio-card-title">Balanced (Recommended)</div>
+                <div className="radio-card-desc">
+                  Good size and quality <span className="visually-hidden">Balanced (150 DPI)</span>
+                </div>
+              </div>
+            </label>
+
+            {/* Low Compression / Lossless */}
+            <label className={`compress-radio-card ${preset === 'lossless' ? 'selected' : ''}`}>
+              <div className="radio-indicator">
+                <input
+                  type="radio"
+                  name="compression-preset"
+                  value="lossless"
+                  checked={preset === 'lossless'}
+                  onChange={() => setPreset('lossless')}
+                />
+                <span className="radio-dot" />
+              </div>
+              <div className="radio-card-content">
+                <div className="radio-card-title">Low Compression</div>
+                <div className="radio-card-desc">
+                  Larger file, best quality <span className="visually-hidden">Lossless structural</span>
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* Right: Estimated Result Card */}
+        <div className="compress-estimate-col">
+          <div className="estimate-result-card">
+            <h3 className="estimate-card-title">Estimated result</h3>
+            <div className="estimate-rows">
+              <div className="estimate-row">
+                <span className="estimate-label">Original size</span>
+                <span className="estimate-value">{fileSize(originalBytes)}</span>
+              </div>
+              <div className="estimate-row">
+                <span className="estimate-label">Estimated size</span>
+                <span className="estimate-value">≈ {fileSize(estimatedBytes)}</span>
+              </div>
+              <div className="estimate-row highlight-row">
+                <span className="estimate-label">Reduction</span>
+                <span className="estimate-reduction-value">≈ {estimatedReduction}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Action Button */}
+      <div className="approved-action-row">
+        <button
+          type="button"
+          className="approved-primary-action-btn"
+          disabled={!source || busy}
+          onClick={() => void runCompress()}
+        >
+          <Minimize2 size={18} aria-hidden="true" />
+          <span>{busy ? 'Compressing PDF…' : 'Compress PDF'}</span>
+        </button>
+      </div>
+
+      {/* Post-Compression Result Banner */}
+      {output && (
+        <div className="approved-result-card" role="region" aria-label="Compression Results">
+          <div className="result-header">
+            <Check size={20} className="text-success" aria-hidden="true" />
+            <h3>Compression Complete</h3>
+          </div>
+          <div className="result-metrics-grid">
+            <div className="result-metric-item">
+              <span className="metric-label">Original</span>
+              <span className="metric-val">{fileSize(output.report.original_bytes)}</span>
+            </div>
+            <div className="result-metric-item">
+              <span className="metric-label">Compressed</span>
+              <span className="metric-val">{fileSize(output.report.compressed_bytes)}</span>
+            </div>
+            <div className="result-metric-item highlight">
+              <span className="metric-label">Reduction</span>
+              <span className="metric-val text-success">
+                {output.report.percent_change}% ({fileSize(output.report.saved_bytes)} saved)
+              </span>
+            </div>
+          </div>
+          <div className="result-actions">
+            <button
+              type="button"
+              className="approved-download-btn"
+              onClick={() => triggerDownload(output.blob, output.filename)}
+            >
+              <Download size={16} /> Download Compressed PDF
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect } from 'react';
 import {
-  Clock3, FileCheck2, FileOutput, FolderKanban, Grid2X2, Layers, LayoutDashboard,
-  Minimize2, ScanText, Settings2, ShieldCheck, Shield, Sparkles,
+  ArrowRightLeft, ChevronDown, Edit3, FileCheck2, Folder,
+  Grid2X2, Home, Layers, Minimize2, ScanText, Scissors,
+  Settings2, Shield,
 } from 'lucide-react';
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { Brand } from '../components/Brand';
 import { ErrorNotice } from '../components/ErrorNotice';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { TopNav } from '../components/TopNav';
 import { Dashboard } from '../features/dashboard/Dashboard';
 import { api } from '../services/api';
 import { fileSize } from '../services/format';
@@ -47,82 +48,112 @@ function Shell({ children }: { children: React.ReactNode }) {
       <aside className="sidebar" aria-label="Sidebar navigation">
         <div className="sidebar-brand-wrap">
           <Brand />
-          <span className="sidebar-tag">WORKSPACE</span>
         </div>
         <nav aria-label="Main navigation">
-          <div className="nav-section-title">Overview</div>
-          <NavLink to="/" end>
-            <LayoutDashboard size={18} aria-hidden="true" />
+          <NavLink to="/" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <Home size={18} aria-hidden="true" />
             <span>Workspace</span>
           </NavLink>
-          <Link to="/#tools">
+          <Link to="/#tools" className="nav-item">
             <Grid2X2 size={18} aria-hidden="true" />
             <span>All Tools</span>
           </Link>
-          <Link to="/#recent">
-            <Clock3 size={18} aria-hidden="true" />
-            <span>Recent Documents</span>
-          </Link>
 
-          <div className="nav-section-title">Document Tools</div>
-          <NavLink to="/tools/organize">
-            <Layers size={18} aria-hidden="true" />
-            <span>Organize PDF</span>
+          <div className="nav-section-title">TOOLS</div>
+
+          <Link to="/#tools" className="nav-item nav-item-edit">
+            <span className="nav-icon-badge badge-pink">
+              <Edit3 size={15} aria-hidden="true" />
+            </span>
+            <span>Edit PDF</span>
+          </Link>
+          <NavLink to="/tools/convert" className={({ isActive }) => `nav-item nav-item-convert ${isActive ? 'active' : ''}`}>
+            <span className="nav-icon-badge badge-blue">
+              <ArrowRightLeft size={15} aria-hidden="true" />
+            </span>
+            <span>Convert PDF</span>
           </NavLink>
-          <NavLink to="/tools/customize">
-            <Sparkles size={18} aria-hidden="true" />
-            <span>Customize</span>
+          <NavLink to="/tools/compress" className={({ isActive }) => `nav-item nav-item-compress ${isActive ? 'active' : ''}`}>
+            <span className="nav-icon-badge badge-purple">
+              <Minimize2 size={15} aria-hidden="true" />
+            </span>
+            <span>Compress PDF</span>
           </NavLink>
-          <NavLink to="/tools/compress">
-            <Minimize2 size={18} aria-hidden="true" />
-            <span>Compress</span>
+          <NavLink to="/tools/organize" className={({ isActive }) => `nav-item nav-item-organize ${isActive ? 'active' : ''}`}>
+            <span className="nav-icon-badge badge-orange">
+              <Layers size={15} aria-hidden="true" />
+            </span>
+            <span>Merge PDF</span>
           </NavLink>
-          <NavLink to="/tools/convert">
-            <FileOutput size={18} aria-hidden="true" />
-            <span>Convert</span>
+          <NavLink to="/tools/organize?mode=split" className={({ isActive }) => `nav-item nav-item-split ${isActive ? 'active' : ''}`}>
+            <span className="nav-icon-badge badge-red">
+              <Scissors size={15} aria-hidden="true" />
+            </span>
+            <span>Split PDF</span>
           </NavLink>
-          <NavLink to="/tools/ocr">
-            <ScanText size={18} aria-hidden="true" />
-            <span>OCR PDF</span>
+          <NavLink to="/tools/forms-sign" className={({ isActive }) => `nav-item nav-item-sign ${isActive ? 'active' : ''}`}>
+            <span className="nav-icon-badge badge-purple">
+              <FileCheck2 size={15} aria-hidden="true" />
+            </span>
+            <span>Sign PDF</span>
           </NavLink>
-          <NavLink to="/tools/forms-sign">
-            <FileCheck2 size={18} aria-hidden="true" />
-            <span>Forms & Sign</span>
+          <NavLink to="/tools/security" className={({ isActive }) => `nav-item nav-item-protect ${isActive ? 'active' : ''}`}>
+            <span className="nav-icon-badge badge-green">
+              <Shield size={15} aria-hidden="true" />
+            </span>
+            <span>Protect PDF</span>
           </NavLink>
-          <NavLink to="/tools/security">
-            <Shield size={18} aria-hidden="true" />
-            <span>Protect & Redact</span>
+          <NavLink to="/tools/ocr" className={({ isActive }) => `nav-item nav-item-ocr ${isActive ? 'active' : ''}`}>
+            <span className="nav-icon-badge badge-amber">
+              <ScanText size={15} aria-hidden="true" />
+            </span>
+            <span>OCR (Scan to Text)</span>
           </NavLink>
-          <NavLink to="/tools/batch">
-            <FolderKanban size={18} aria-hidden="true" />
-            <span>Batch Processing</span>
+          <NavLink to="/tools/customize" className="nav-item nav-item-more">
+            <span className="nav-icon-badge badge-gray">
+              <ChevronDown size={15} aria-hidden="true" />
+            </span>
+            <span>More Tools</span>
           </NavLink>
         </nav>
+
         <div className="sidebar-bottom">
-          <div className="sidebar-theme-wrap">
-            <ThemeToggle />
-          </div>
-          <div className="privacy-note">
-            <ShieldCheck size={20} strokeWidth={1.5} aria-hidden="true" />
-            <div>
-              <strong>Private & Secure</strong>
-              <p>In-browser execution with automatic session cleanup.</p>
+          <div className="sidebar-storage-card">
+            <div className="storage-card-header">
+              <Folder size={16} className="storage-icon" aria-hidden="true" />
+              <span className="storage-title">Storage</span>
             </div>
+            <div className="storage-meter-track" role="progressbar" aria-valuenow={24} aria-valuemin={0} aria-valuemax={100}>
+              <div className="storage-meter-fill" style={{ width: '24%' }} />
+            </div>
+            <div className="storage-meta-text">2.4 GB of 10 GB used</div>
           </div>
-          <NavLink to="/settings" className="settings-link">
+
+          <NavLink to="/settings" className={({ isActive }) => `settings-link ${isActive ? 'active' : ''}`}>
             <Settings2 size={18} aria-hidden="true" />
             <span>Settings</span>
           </NavLink>
-          <span className="release-label">Docera · v1.0.0</span>
         </div>
       </aside>
-      {children}
+
+      <div className="main-viewport">
+        <TopNav />
+        {children}
+      </div>
     </div>
   );
 }
 
 function ToolRoute({ children }: { children: React.ReactNode }) {
-  return <Shell><main id="main-content"><Suspense fallback={<div className="boot-state" role="status">Loading tool…</div>}>{children}</Suspense></main></Shell>;
+  return (
+    <Shell>
+      <main id="main-content" className="tool-main-content">
+        <Suspense fallback={<div className="boot-state" role="status">Loading tool…</div>}>
+          {children}
+        </Suspense>
+      </main>
+    </Shell>
+  );
 }
 
 export function App() {

@@ -1,10 +1,22 @@
 import { Link } from 'react-router-dom';
 
 export function Brand({ compact = false }: { compact?: boolean }) {
-  return <Link to="/" className={`brand ${compact ? 'brand-compact' : ''}`} aria-label="Docera home">
-    <svg width="30" height="32" viewBox="0 0 30 32" fill="none" aria-hidden="true">
-      <path d="M5 5h12l8 8v14H5V5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <path d="M17 5v8h8M1 10v21h19M10 18h10M10 22h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg><span>docera<span className="brand-dot">.</span></span>
-  </Link>;
+  return (
+    <Link to="/" className={`brand ${compact ? 'brand-compact' : ''}`} aria-label="Docera home">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true" className="brand-logo-icon">
+        <rect width="28" height="28" rx="8" fill="#008F4F" />
+        <path
+          d="M8 17C8 12 12 8 18 8C18 13 14 17 8 17Z"
+          fill="#FFFFFF"
+        />
+        <path
+          d="M8.5 16.5C11 14 13.5 13 17 12.5"
+          stroke="#008F4F"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className="brand-name">Docera</span>
+    </Link>
+  );
 }

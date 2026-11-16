@@ -64,8 +64,8 @@ LEGACY_REPLACEMENTS = [
     (re.compile(r"ផ្សែងយល់"), "ស្វែងយល់"),
     (re.compile(r"ផ្សែង"), "ស្វែង"),
     (re.compile(r"ធនាគា\b"), "ធនាគារ"),
-    (re.compile(r"ហ្\s*ែ\s*ីលីព|ហ្ែីលីព|ហវីលីព"), "ហ្វឺលីព"),
-    (re.compile(r"ហ្\s*ែ\s*ី|ហ្ែី"), "ហ្វឺ"),
+    (re.compile(r"ហ្\s*ែ\s*ីលីព|ហ្ែីលីព|ហវីលីព"), "ហ្វីលីព"),
+    (re.compile(r"ហ្\s*ែ\s*ី|ហ្ែី"), "ហ្វី"),
     (re.compile(r"ហ្ិរញ្ញវត្ថុ"), "ហិរញ្ញវត្ថុ"),
     (re.compile(r"ភី?អិលសុ[\s\u17BB\u17B8\u17CA]*"), "ភីអិលស៊ី"),
     (re.compile(r"ភី?អិលស[ី៊ី]+"), "ភីអិលស៊ី"),
@@ -211,9 +211,18 @@ def normalize_khmer_unicode(text: str) -> str:
     norm = re.sub(r"\u17B8{2,}", "\u17B8", norm)
     norm = re.sub(r"\u17BB{2,}", "\u17BB", norm)
 
-    # Repair illegal coeng before upper vowels: \u17D2\u17C2\u17B8 (្ែី) -> \u17D2\u179C\u17BA (្វឺ)
-    norm = norm.replace("\u17D2\u17C2\u17B8", "\u17D2\u179C\u17BA")
+    # Repair illegal coeng before upper vowels: \u17D2\u17C2\u17B8 (្ែី) -> \u17D2\u179C\u17B8 (្វី)
+    norm = norm.replace("\u17D2\u17C2\u17B8", "\u17D2\u179C\u17B8")
     norm = norm.replace("\u17D2\u17C2", "\u17D2\u179C\u17C2")
+    norm = re.sub(r"\u17A0\u17D2\u17C2?\u17B8", "\u17A0\u17D2\u179C\u17B8", norm)
+    norm = norm.replace("\u17A0\u17D2\u17B8", "\u17A0\u17D2\u179C\u17B8")
+
+    # Fix illegal coeng after nikahit: ចំ + ្ + ព -> ចំព (e.g. ចំពោះ)
+    norm = re.sub(r"([\u17C6])\u17D2([\u1780-\u17A2])", lambda m: m.group(1) + m.group(2), norm)
+
+    # Fix conflicting double vowels after ោ (U+17C4): ោ + េ -> ោ (e.g. គ្រោេះ -> គ្រោះ)
+    norm = norm.replace("\u17C4\u17C1", "\u17C4")
+
     norm = re.sub(r"\u17D2\s+", "", norm)
     norm = re.sub(r"\u17D2(?=[^\u1780-\u17A2]|$)", "", norm)
 

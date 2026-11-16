@@ -50,7 +50,7 @@ describe('Khmer Unicode Normalizer & Legacy Repair', () => {
   it('repairs the legacy bank heading with invalid coeng-vowel sequences and errant whitespace', () => {
     const raw = 'ផ្នែកទី១៖ ផ្សែងយល់អំពីស្ថានភាពទូទៅរបស់ ធនាគា ហ្ែីលីព ភីអិលសុ ី';
     const repaired = repairLegacyKhmerArtifacts(raw);
-    expect(repaired).toBe('ផ្នែកទី១៖ ស្វែងយល់អំពីស្ថានភាពទូទៅរបស់ ធនាគា ហ្វឺលីព ភីអិលស៊ី');
+    expect(repaired).toBe('ផ្នែកទី១៖ ស្វែងយល់អំពីស្ថានភាពទូទៅរបស់ ធនាគា ហ្វីលីព ភីអិលស៊ី');
   });
 
   it('repairs the line with multiple dotted circles (cages, coengs, and spaces) from the user complaint', () => {
